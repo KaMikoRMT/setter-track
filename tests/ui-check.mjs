@@ -100,14 +100,26 @@ if (fs.existsSync(detPath)) {
     check(likes === 1, '偵測結果匯入後有「全部加入像舉球的」');
     if (likes) {
         await page.click('text=全部加入像舉球的');
-        const ds = await page.evaluate(() => window.__setterTrack.derived().filter(x => x.set.src === 'auto').map(x => ({ target: x.metrics.target, team: x.metrics.team, t: x.tVideo })));
-        console.log('     自動加入：', JSON.stringify(ds));
+        // 第一顆已經手動標過，跟它重疊的候選不會再列出；所以「手動＋自動」要剛好是三顆舉球
+        const ds = await page.evaluate(() => window.__setterTrack.derived().map(x => ({ src: x.set.src, target: x.metrics.target, team: x.metrics.team, t: x.tVideo })));
+        console.log('     全部舉球：', JSON.stringify(ds));
         const sets = truth.flights.filter(f => f.kind === 'set');
-        const found = sets.filter(s => ds.some(x => Math.abs(x.t - s.t0) < 0.25 && x.target === s.target));
-        check(found.length === sets.length, `三顆舉球都自動找到並分對目標區（${found.length}/${sets.length}）`);
-        check(ds.length <= sets.length + 1, `誤判不超過 1 段（自動加入 ${ds.length} 段）`);
+        const match = (x, s) => Math.abs(x.t - s.t0) < 0.25 && x.target === s.target && x.team === (s.team === 'near' ? 'us' : 'them');
+        const found = sets.filter(s => ds.some(x => match(x, s)));
+        const wrong = ds.filter(x => !sets.some(s => match(x, s)));
+        check(found.length === sets.length, `三顆舉球都找到，目標區與隊伍都對（${found.length}/${sets.length}）`);
+        check(ds.filter(x => x.src === 'auto').length === 2, `自動加入 2 顆（第 1 顆已手動標過，不重複）`);
+        check(wrong.length === 0, `沒有誤判（${wrong.length}）`);
     }
 }
+
+// ---------- 匯出訓練標註（detector/tests/test_dataset.py 會用） ----------
+await page.click('#btnProject');
+const [dl] = await Promise.all([page.waitForEvent('download'), page.click('[data-act=exportLabels]')]);
+await dl.saveAs(path.join(synDir, 'labels.json'));
+const L = JSON.parse(fs.readFileSync(path.join(synDir, 'labels.json'), 'utf8'));
+const nMarks = await page.evaluate(() => window.__setterTrack.derived().reduce((n, d) => n + (d.fit ? d.fit.inliers.filter(Boolean).length : 0), 0));
+check(L.app === 'setter-track-labels' && L.labels.length === nMarks && L.labels.every(l => l.r > 1), `匯出訓練標註 ${L.labels.length} 個球的位置`);
 
 // ---------- ③ 檢視 ----------
 await page.click('[data-tab=view]');

@@ -22,6 +22,18 @@
 4. **③ 檢視**：看 3D 軌跡（底線後／正面／側面／俯視／影片視角）、目標區、最高點、飛行時間，按「好／普通／待改進」、寫註解。
 5. 專案選單 → **下載專案檔**備份（也會自動存在這台裝置的瀏覽器裡）。
 
+## 自動偵測（選用）
+
+```bash
+pip install -r detector/requirements.txt
+```
+
+```bash
+python3 detector/detect.py 你的影片.mp4 -o detections.json
+```
+
+網頁工具 → 專案 → 匯入自動偵測結果 → 在「② 標記舉球」加入像舉球的段。也可以用自己標記的球訓練 YOLO，讓偵測更準：見 [`detector/README.md`](detector/README.md)。
+
 ## 開發
 
 ```bash
@@ -33,5 +45,13 @@ node tests/make-synthetic.mjs /tmp/syn
 ```
 
 ```bash
+python3 detector/tests/test_synthetic.py /tmp/syn
+```
+
+```bash
 node tests/ui-check.mjs /tmp/syn
+```
+
+```bash
+python3 detector/tests/test_dataset.py /tmp/syn
 ```

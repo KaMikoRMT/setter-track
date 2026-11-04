@@ -662,17 +662,41 @@ function ballVel(fit, t) {
     const s = t - fit.t0;
     return [fit.v0[0], fit.v0[1], fit.v0[2] - CONFIG.G * s];
 }
+// 線性初值。代數誤差 = 深度 × 像素誤差，直接解會讓短軌跡「縮到相機上」（深度→0 誤差就→0），
+// 所以每條方程式除以估計的深度、反覆幾次（初始深度：射線碰到 2.5 m 高的位置）。
+// 很短的軌跡本來就看不出深度，再加一個很弱的先驗：起點靠近第一點射線上 2.5 m 高的位置
+// （偏 1 m 的代價約等於 0.3 px，軌跡夠長時幾乎沒有影響）。
 function fitBallisticLinear(cam, obs, t0) {
     const R = cam.R, r1 = [R[0], R[1], R[2]], r2 = [R[3], R[4], R[5]], r3 = [R[6], R[7], R[8]], t = cam.t;
-    const rows = [], rhs = [];
-    for (const o of obs) {
-        const s = o.t - t0, n = undistortPixel(cam, o.u, o.v);
-        const gz = [0, 0, -0.5 * CONFIG.G * s * s];
-        const ax = sub3(scale3(r3, n[0]), r1), ay = sub3(scale3(r3, n[1]), r2);
-        rows.push(ax.concat(scale3(ax, s))); rhs.push(t[0] - n[0] * t[2] - dot3(ax, gz));
-        rows.push(ay.concat(scale3(ay, s))); rhs.push(t[1] - n[1] * t[2] - dot3(ay, gz));
+    const C = camCenter(cam);
+    const pre = obs.map(o => {
+        const n = undistortPixel(cam, o.u, o.v), ray = rayFromPixel(cam, o.u, o.v);
+        const P = rayPlane(ray, 2, 2.5) || add3(C, scale3(ray.d, norm3(C)));
+        return { s: o.t - t0, n, z: Math.max(0.5, dot3(r3, P) + t[2]) };
+    });
+    const first = obs.reduce((m, o) => (o.t < m.t ? o : m), obs[0]);
+    const r0 = rayFromPixel(cam, first.u, first.v);
+    const prior = rayPlane(r0, 2, 2.5) || add3(C, scale3(r0.d, norm3(C)));
+    const lam = 0.3 / cam.f;
+    let sol = null;
+    for (let it = 0; it < 4; it++) {
+        const rows = [], rhs = [];
+        for (let a = 0; a < 3; a++) { const r = [0, 0, 0, 0, 0, 0]; r[a] = lam; rows.push(r); rhs.push(lam * prior[a]); }
+        for (const q of pre) {
+            const s = q.s, w = 1 / q.z, gz = [0, 0, -0.5 * CONFIG.G * s * s];
+            const ax = sub3(scale3(r3, q.n[0]), r1), ay = sub3(scale3(r3, q.n[1]), r2);
+            rows.push(ax.concat(scale3(ax, s)).map(v => v * w)); rhs.push((t[0] - q.n[0] * t[2] - dot3(ax, gz)) * w);
+            rows.push(ay.concat(scale3(ay, s)).map(v => v * w)); rhs.push((t[1] - q.n[1] * t[2] - dot3(ay, gz)) * w);
+        }
+        const next = leastSquares(rows, rhs);
+        if (!next) break;
+        sol = next;
+        for (const q of pre) {
+            const X = [sol[0] + sol[3] * q.s, sol[1] + sol[4] * q.s, sol[2] + sol[5] * q.s - 0.5 * CONFIG.G * q.s * q.s];
+            q.z = Math.max(0.5, dot3(r3, X) + t[2]);
+        }
     }
-    return leastSquares(rows, rhs);
+    return sol;
 }
 function fitBallistic(cam, obsIn) {
     if (!cam || !obsIn || obsIn.length < CONFIG.MIN_MARKS) return null;
@@ -821,7 +845,8 @@ function migrate(obj) {
     }
     for (const cd of Array.isArray(obj.candidates) ? obj.candidates : []) {
         if (!cd || !Array.isArray(cd.points)) continue;
-        p.candidates.push({ id: String(cd.id || uid('c_')), points: cd.points.filter(okMark).map(m => ({ t: m.t, u: m.u, v: m.v })), dismissed: !!cd.dismissed });
+        const dis = Array.isArray(cd.dismissed) ? cd.dismissed.filter(r => Array.isArray(r) && isNum(r[0]) && isNum(r[1])).map(r => [r[0], r[1]]) : [];
+        p.candidates.push({ id: String(cd.id || uid('c_')), points: cd.points.filter(okMark).map(m => ({ t: m.t, u: m.u, v: m.v })), dismissed: dis });
     }
     return { ok: true, project: p };
 }
@@ -862,25 +887,78 @@ function summarize(derived) {
     }
     return out;
 }
-// 偵測結果（Python → 網頁，規格 7.1）
+// 偵測結果（Python → 網頁，規格 7.1）：每條是連續追到的球軌跡，還沒切段
 function parseDetections(obj) {
-    if (!obj || obj.app !== 'setter-track-detector' || !Array.isArray(obj.segments)) return { ok: false, msg: '這不是偵測結果檔（detect.py 的輸出）' };
-    const segs = [];
-    for (const s of obj.segments) {
+    if (!obj || obj.app !== 'setter-track-detector' || !Array.isArray(obj.tracks)) return { ok: false, msg: '這不是偵測結果檔（detect.py 的輸出）' };
+    const tracks = [];
+    for (const s of obj.tracks) {
         if (!s || !Array.isArray(s.points)) continue;
-        const pts = s.points.filter(m => m && isNum(m.t) && isNum(m.u) && isNum(m.v)).map(m => ({ t: m.t, u: m.u, v: m.v }));
-        if (pts.length >= CONFIG.MIN_MARKS) segs.push({ id: String(s.id != null ? s.id : uid('c_')), points: pts, dismissed: false });
+        const pts = s.points.filter(m => m && isNum(m.t) && isNum(m.u) && isNum(m.v)).map(m => ({ t: m.t, u: m.u, v: m.v })).sort((a, b) => a.t - b.t);
+        if (pts.length >= CONFIG.MIN_MARKS) tracks.push({ id: String(s.id != null ? s.id : uid('c_')), points: pts, dismissed: [] });
     }
-    return { ok: true, video: obj.video || {}, segments: segs };
+    return { ok: true, video: obj.video || {}, tracks };
 }
-function deriveCandidate(p, c) {
+// 把一條連續的球軌跡切成一段段拋物線（球被碰到的地方會折斷）。
+// 用相機模型算真正的重投影誤差，所以透視、廣角變形都不影響。pts 要依時間排序，t 是實際秒。
+function splitBallistic(cam, pts, opts) {
+    const o = Object.assign({ tol: 3, minLen: 6 }, opts || {});
+    const n = pts.length, segs = [];
+    const errAt = (fit, k) => {
+        const X = ballAt(fit, pts[k].t);
+        if (camCoords(cam, X)[2] <= 1e-3) return 1e9;
+        const q = projectRaw(cam, X);
+        return Math.hypot(q[0] - pts[k].u, q[1] - pts[k].v);
+    };
+    const lin = idx => {
+        const t0 = pts[idx[0]].t, p = fitBallisticLinear(cam, idx.map(k => pts[k]), t0);
+        return p ? { t0, p0: p.slice(0, 3), v0: p.slice(3) } : null;
+    };
+    const good = (fit, idx) => fit && idx.every(k => errAt(fit, k) <= o.tol);
+    let i = 0;
+    while (i + o.minLen <= n) {
+        const idx = [];
+        for (let k = i; k < i + o.minLen; k++) idx.push(k);
+        let fit = lin(idx);
+        if (!good(fit, idx)) { i++; continue; }
+        let j = i + o.minLen;
+        while (j < n) {
+            if (errAt(fit, j) <= o.tol) { idx.push(j); j++; if (idx.length % 3 === 0) fit = lin(idx) || fit; continue; }
+            const withJ = idx.concat([j]), fj = lin(withJ);
+            if (good(fj, withJ)) { fit = fj; idx.push(j); j++; continue; }
+            // 只是一個雜點？跳過它，後面兩點還接得上就繼續
+            if (j + 2 < n) {
+                const skip = idx.concat([j + 1, j + 2]), fs = lin(skip);
+                if (good(fs, skip)) { fit = fs; idx.push(j + 1, j + 2); j += 3; continue; }
+            }
+            break;
+        }
+        segs.push(idx.map(k => pts[k]));
+        i = j;
+    }
+    return segs;
+}
+// 匯入的軌跡 → 切段 → 擬合 → 判斷像不像舉球。已經是舉球（或被略過）的時間段不再列出。
+function deriveCandidates(p) {
     const cam = p.calib.cam, k = p.video.realPerVideo || 1;
-    if (!cam) return { cand: c, fit: null, metrics: null, like: { ok: false, why: ['還沒校正'] } };
-    const fit = fitBallistic(cam, c.points.map(m => ({ t: m.t * k, u: m.u, v: m.v })));
-    const metrics = fit ? setMetrics(fit, p.settings) : null;
-    const like = metrics ? looksLikeSet(metrics) : { ok: false, why: ['擬合失敗'] };
-    if (fit && fit.rms > 6) { like.ok = false; like.why.push('不像一條拋物線'); }
-    return { cand: c, fit, metrics, like, tVideo: c.points[0].t };
+    if (!cam) return { ready: false, list: [] };
+    const tol = Math.max(2.5, 0.0025 * (p.video.w || cam.w || 1280));
+    const taken = deriveAll(p).filter(d => d.fit).map(d => [d.fit.tStart / k, d.fit.tEnd / k]);
+    const list = [];
+    for (const c of p.candidates) {
+        const pts = c.points.map(m => ({ t: m.t * k, u: m.u, v: m.v, tv: m.t }));
+        for (const seg of splitBallistic(cam, pts, { tol })) {
+            const tv0 = seg[0].tv, tv1 = seg[seg.length - 1].tv, mid = 0.5 * (tv0 + tv1);
+            if ((c.dismissed || []).some(r => mid >= r[0] && mid <= r[1])) continue;
+            if (taken.some(r => mid >= r[0] && mid <= r[1])) continue;
+            const fit = fitBallistic(cam, seg);
+            if (!fit) continue;
+            const metrics = setMetrics(fit, p.settings), like = looksLikeSet(metrics);
+            if (fit.rms > tol) { like.ok = false; like.why.push('不像一條拋物線'); }
+            list.push({ key: `${c.id}@${tv0.toFixed(3)}`, cand: c, points: seg.map(m => ({ t: m.tv, u: m.u, v: m.v })), fit, metrics, like, tVideo: tv0, tVideoEnd: tv1 });
+        }
+    }
+    list.sort((a, b) => a.tVideo - b.tVideo);
+    return { ready: true, list };
 }
 // 訓練標註（網頁 → Python，規格 7.2）
 function buildLabels(p) {
@@ -1121,8 +1199,49 @@ function runSelfTests() {
 
     T('偵測結果檔：格式檢查', () => {
         ok(!parseDetections({ app: 'x' }).ok, '別的檔案要擋下來');
-        const r = parseDetections({ app: 'setter-track-detector', segments: [{ id: 1, points: [{ t: 0, u: 1, v: 1 }] }, { id: 2, points: [0, 1, 2, 3].map(i => ({ t: i, u: i, v: i })) }] });
-        ok(r.ok && r.segments.length === 1 && r.segments[0].id === '2', '太短的段要濾掉');
+        const r = parseDetections({ app: 'setter-track-detector', tracks: [{ id: 1, points: [{ t: 0, u: 1, v: 1 }] }, { id: 2, points: [3, 1, 2, 0].map(i => ({ t: i, u: i, v: i })) }] });
+        ok(r.ok && r.tracks.length === 1 && r.tracks[0].id === '2', '太短的軌跡要濾掉');
+        ok(r.tracks[0].points[0].t === 0, '依時間排序');
+    });
+
+    // 一條連續的球：接球 → 舉球 → 扣球（三段拋物線），加雜訊與兩個雜點
+    const rally = () => {
+        const pass = trueFit([-1.0, -7.5, 0.9], [0.5, -0.7, 2.5], 1.0);
+        const set = Object.assign({}, setTo4, { t0: 1.0, tStart: 1.0, tEnd: 2.15 });
+        const e = ballAt(setTo4, 1.15), atk0 = trueFit(e, [1.0, 5.5, 0.11], 0.38);
+        const atk = Object.assign({}, atk0, { t0: 2.15, tStart: 2.15, tEnd: 2.53 });
+        const pts = [];
+        for (let f = 0; f / 60 < 2.53; f++) {
+            const t = f / 60, fit = t < 1.0 ? pass : t < 2.15 ? set : atk;
+            const q = projectPoint(wideCam, ballAt(fit, t));
+            if (q && inImage(q)) pts.push({ t, u: q[0] + 0.7 * gauss(), v: q[1] + 0.7 * gauss() });
+        }
+        pts[70].u += 30; pts[100].v -= 25;
+        return pts;
+    };
+
+    T('切段：一條連續的球切成接球、舉球、扣球', () => {
+        const pts = rally();
+        const segs = splitBallistic(wideCam, pts, { tol: 3 });
+        const setSeg = segs.find(s => s[0].t > 0.9 && s[0].t < 1.1);
+        ok(setSeg, `找不到舉球那一段：${segs.map(s => s[0].t.toFixed(2) + '–' + s[s.length - 1].t.toFixed(2)).join(', ')}`);
+        ok(Math.abs(setSeg[0].t - 1.0) <= 2 / 60 + 1e-9 && Math.abs(setSeg[setSeg.length - 1].t - 2.15) <= 2 / 60 + 1e-9, `舉球段 ${setSeg[0].t.toFixed(3)}–${setSeg[setSeg.length - 1].t.toFixed(3)}`);
+        ok(segs.length <= 4, `段數 ${segs.length}`);
+        ok(!setSeg.some(m => m === pts[70] || m === pts[100]), '雜點要被跳過');
+    });
+
+    T('候選：只有舉球那段像舉球；加入後不再列出', () => {
+        const p = newProject({ w: W, h: H });
+        p.calib.cam = wideCam;
+        p.candidates = parseDetections({ app: 'setter-track-detector', tracks: [{ id: 'a', points: rally() }] }).tracks;
+        let r = deriveCandidates(p);
+        const likes = r.list.filter(c => c.like.ok);
+        ok(likes.length === 1 && likes[0].metrics.target === '大砲', `像舉球的段：${likes.length}`);
+        const s = newSet('auto'); s.marks = likes[0].points; p.sets.push(s);
+        r = deriveCandidates(p);
+        ok(!r.list.some(c => c.like.ok), '已加入的不再列出');
+        p.candidates[0].dismissed.push([r.list[0].tVideo, r.list[0].tVideoEnd]);
+        ok(deriveCandidates(p).list.length === r.list.length - 1, '略過的不再列出');
     });
 
     T('統計：依隊伍與目標區分組', () => {
@@ -1517,8 +1636,8 @@ function drawMarkOverlay(ctx, proj, lw, jump) {
     let marks = null, fit = null, color = '#fde047';
     if (draft) { marks = draft.marks; fit = proj ? deriveSet(p, draft).fit : null; }
     else if (S.preview) {
-        const c = p.candidates.find(x => x.id === S.preview);
-        if (c) { marks = c.points; fit = proj ? deriveCandidate(p, c).fit : null; color = '#a78bfa'; }
+        const c = candidates().list.find(x => x.key === S.preview);
+        if (c) { marks = c.points; fit = c.fit; color = '#a78bfa'; }
     }
     if (!marks) return;
     if (fit) {
@@ -1836,26 +1955,40 @@ function renderMark() {
         h += '</div>';
     }
     if (p.candidates.length) {
-        const cds = p.candidates.filter(c => !c.dismissed).map(c => deriveCandidate(p, c)).sort((a, b) => a.tVideo - b.tVideo);
-        const likes = cds.filter(c => c.like.ok);
-        h += `<div><h3>自動偵測的候選：${cds.length} 段（像舉球 ${likes.length} 段）</h3></div>`;
-        if (likes.length) h += `<button data-act="acceptAll">全部加入像舉球的（${likes.length}）</button>`;
-        h += '<div class="list">';
-        for (const c of cds) {
-            h += `<div class="item ${S.preview === c.cand.id ? 'sel' : ''}"><div class="head"><span class="num">${fmtTime(c.tVideo)}</span><span class="muted">${c.cand.points.length} 點</span>
-                ${c.like.ok ? `<span>像舉球：${esc(c.metrics.target)}、最高 ${c.metrics.apexZ.toFixed(1)} m</span>` : `<span class="muted">不像：${esc(c.like.why.join('、'))}</span>`}</div>
-                <div class="row"><button class="small" data-cand-view="${esc(c.cand.id)}">看</button><button class="small" data-cand-ok="${esc(c.cand.id)}">加入</button><button class="small" data-cand-no="${esc(c.cand.id)}">略過</button></div></div>`;
+        const cd = candidates();
+        h += '<div><h3>自動偵測</h3></div>';
+        if (!cd.ready) h += `<div class="warn">匯入了 ${p.candidates.length} 條自動偵測的軌跡；完成場地校正後才能切段、找出哪些是舉球。</div>`;
+        else {
+            const likes = cd.list.filter(c => c.like.ok), others = cd.list.length - likes.length;
+            h += `<p class="hint">${p.candidates.length} 條軌跡切成 ${cd.list.length} 段：像舉球 ${likes.length} 段。已經加入或略過的不會再列出。</p>`;
+            if (likes.length) h += `<button data-act="acceptAll">全部加入像舉球的（${likes.length}）</button>`;
+            h += '<div class="list">';
+            for (const c of S.showAllCands ? cd.list : likes) {
+                const m = c.metrics;
+                h += `<div class="item ${S.preview === c.key ? 'sel' : ''}"><div class="head"><span class="num">${fmtTime(c.tVideo)}</span><span class="muted">${c.points.length} 點</span>
+                    ${c.like.ok ? `<span class="tag ${m.team}">${TEAM_LABEL[m.team]}</span><span>${esc(m.target)}・最高 ${m.apexZ.toFixed(1)} m・${m.flight.toFixed(2)} s</span>` : `<span class="muted">不像舉球：${esc(c.like.why.join('、'))}</span>`}</div>
+                    <div class="row"><button class="small" data-cand-view="${esc(c.key)}">看</button><button class="small" data-cand-ok="${esc(c.key)}">加入</button><button class="small" data-cand-no="${esc(c.key)}">略過</button></div></div>`;
+            }
+            h += '</div>';
+            if (others) h += `<button class="small" data-act="toggleCands">${S.showAllCands ? '只看像舉球的' : `也顯示不像舉球的（${others}）`}</button>`;
         }
-        h += '</div>';
+        h += '<button class="small danger" data-act="clearCands">清掉偵測結果</button>';
     }
     return h;
+}
+let candCache = { key: null, val: null };
+function candidates() {
+    const p = S.project, cam = p.calib.cam;
+    const key = [cam ? [cam.f, cam.k1, cam.k2].concat(cam.t, cam.R).join(',') : 'none', p.video.realPerVideo, p.video.w, p.settings.netHeight, p.settings.ourSide,
+        p.candidates.length, p.candidates.reduce((n, c) => n + c.dismissed.length, 0), p.sets.map(x => x.id + ':' + x.marks.length).join('|')].join('#');
+    if (candCache.key !== key) candCache = { key, val: deriveCandidates(p) };
+    return candCache.val;
 }
 function acceptCandidate(c) {
     const s = newSet('auto');
     s.marks = c.points.map(m => ({ t: m.t, u: m.u, v: m.v }));
     S.project.sets.push(s);
-    c.dismissed = true;
-    if (S.preview === c.id) S.preview = null;
+    if (S.preview === c.key) S.preview = null;
 }
 function bindMark(root) {
     root.querySelectorAll('[data-stepn]').forEach(b => b.onclick = () => { S.step = +b.dataset.stepn; render(); });
@@ -1865,10 +1998,15 @@ function bindMark(root) {
     on('[data-act=finish]', finishDraft);
     on('[data-act=cancel]', cancelDraft);
     on('[data-act=acceptAll]', () => {
-        const p = S.project;
-        p.candidates.filter(c => !c.dismissed).map(c => deriveCandidate(p, c)).filter(c => c.like.ok).forEach(c => acceptCandidate(c.cand));
+        const likes = candidates().list.filter(c => c.like.ok);
+        likes.forEach(acceptCandidate);
         commit();
+        toast(`加入 ${likes.length} 顆舉球`);
     });
+    on('[data-act=toggleCands]', () => { S.showAllCands = !S.showAllCands; render(); });
+    on('[data-act=clearCands]', () => askConfirm('清掉偵測結果', '匯入的自動偵測軌跡會刪掉（已經加入的舉球不受影響）。', '清掉', () => {
+        S.project.candidates = []; S.preview = null; commit();
+    }));
     root.querySelectorAll('[data-goto]').forEach(b => b.onclick = () => { const d = derived().find(x => x.set.id === b.dataset.goto); if (d) { video.pause(); seek(d.tVideo); } });
     root.querySelectorAll('[data-edit]').forEach(b => b.onclick = () => {
         const s = S.project.sets.find(x => x.id === b.dataset.edit);
@@ -1888,10 +2026,16 @@ function bindMark(root) {
         S.confirmDel = null;
         commit();
     });
-    const findCand = id => S.project.candidates.find(c => c.id === id);
-    root.querySelectorAll('[data-cand-view]').forEach(b => b.onclick = () => { const c = findCand(b.dataset.candView); if (!c) return; S.preview = c.id; video.pause(); seek(c.points[0].t); render(); drawOverlay(); });
+    const findCand = key => candidates().list.find(c => c.key === key);
+    root.querySelectorAll('[data-cand-view]').forEach(b => b.onclick = () => { const c = findCand(b.dataset.candView); if (!c) return; S.preview = c.key; video.pause(); seek(c.tVideo); render(); drawOverlay(); });
     root.querySelectorAll('[data-cand-ok]').forEach(b => b.onclick = () => { const c = findCand(b.dataset.candOk); if (c) { acceptCandidate(c); commit(); } });
-    root.querySelectorAll('[data-cand-no]').forEach(b => b.onclick = () => { const c = findCand(b.dataset.candNo); if (c) { c.dismissed = true; if (S.preview === c.id) S.preview = null; commit(); } });
+    root.querySelectorAll('[data-cand-no]').forEach(b => b.onclick = () => {
+        const c = findCand(b.dataset.candNo);
+        if (!c) return;
+        c.cand.dismissed.push([c.tVideo, c.tVideoEnd]);
+        if (S.preview === c.key) S.preview = null;
+        commit();
+    });
 }
 
 // ------------------------------------------------------------
@@ -2148,10 +2292,11 @@ $('#fileJson').addEventListener('change', async e => {
         const r = parseDetections(obj);
         if (!r.ok) { toast(r.msg); return; }
         if (r.video.name && r.video.name !== S.project.video.name) toast(`注意：偵測結果是「${r.video.name}」的`);
-        S.project.candidates = r.segments;
-        S.tab = 'mark';
+        S.project.candidates = r.tracks;
+        S.tab = 'mark'; S.preview = null;
         commit();
-        toast(`匯入 ${r.segments.length} 段候選軌跡`);
+        layoutStage();
+        toast(`匯入 ${r.tracks.length} 條自動偵測的軌跡`);
     }
 });
 $('#btnOpenVideo').onclick = () => { $('#fileVideo').value = ''; $('#fileVideo').click(); };

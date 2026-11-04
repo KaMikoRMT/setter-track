@@ -11,7 +11,7 @@
 
 - 依 `docs/ARCHITECTURE.md` 第 10 節的階段依序做；一個階段通過驗收才進下一個。
 - 每個階段完成：
-  1. `node tests/selftest.mjs` 全部通過；動到 `detector/` 就跑 `python3 detector/tests/test_synthetic.py`。
+  1. `node tests/selftest.mjs` 全部通過；動到 `detector/` 或匯入流程，就依序跑 `node tests/make-synthetic.mjs <資料夾>` → `python3 detector/tests/test_synthetic.py <資料夾>` → `node tests/ui-check.mjs <資料夾>` → `python3 detector/tests/test_dataset.py <資料夾>`。
   2. 有無頭瀏覽器就實測 1280×800、390×844；沒有就在 `docs/PROGRESS.md` 列出沒實測的畫面項目。
   3. 更新 `docs/PROGRESS.md`（完成項目、未完成項目、判斷紀錄）。
   4. commit，訊息開頭標階段，例如 `P2: calibration UI`。
