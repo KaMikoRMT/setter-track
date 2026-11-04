@@ -1,1 +1,57 @@
-# setter-track
+# setter-track：舉球軌跡分析
+
+從練球／比賽錄影找出每一顆舉球，重建成 3D 軌跡畫在球場上，算出「舉到哪一區、多高、飛多久」，讓舉球員和教練一起覆盤。
+
+- 網頁工具：`app/index.html`，用瀏覽器直接打開（不用安裝、不用網路，影片不會上傳）。
+- 自動偵測（選用）：`detector/`，Python 找出影片裡的球，匯入網頁工具當候選。
+- 完整規格：[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)；進度：[`docs/PROGRESS.md`](docs/PROGRESS.md)。
+
+## 錄影建議
+
+1. **腳架固定**，整場不要動手機、不要改倍率。
+2. 放在**近端底線後方**（正後方或角落都可以），架高一點，整個球場和兩支標誌桿都要拍到。
+3. **60fps**。0.5x／0.7x 可以用，但要在工具裡勾「廣角鏡頭」。
+4. 關掉「加強防手震」「運動模式」。
+5. iPhone 預設的 HEVC 在部分電腦的 Chrome 打不開；打不開就轉成 MP4（H.264），或在 iPhone「設定 → 相機 → 格式」選「最相容」。
+
+## 使用步驟
+
+1. **開啟影片**。
+2. **① 場地校正**：依示意圖點球場的角落、網子上緣、標誌桿頂端（至少 4 個地板上的點＋2 個網子的點）；廣角就再沿著邊線、底線多點幾點。藍線貼齊影片裡的線、誤差在 1～2 px 就好了。
+3. **② 標記舉球**：按「新增一顆舉球」，從舉球員手離開後開始，每格點一下球的中心，點到攻擊手碰到之前，按 Enter。
+4. **③ 檢視**：看 3D 軌跡（底線後／正面／側面／俯視／影片視角）、目標區、最高點、飛行時間，按「好／普通／待改進」、寫註解。
+5. 專案選單 → **下載專案檔**備份（也會自動存在這台裝置的瀏覽器裡）。
+
+## 自動偵測（選用）
+
+```bash
+pip install -r detector/requirements.txt
+```
+
+```bash
+python3 detector/detect.py 你的影片.mp4 -o detections.json
+```
+
+網頁工具 → 專案 → 匯入自動偵測結果 → 在「② 標記舉球」加入像舉球的段。也可以用自己標記的球訓練 YOLO，讓偵測更準：見 [`detector/README.md`](detector/README.md)。
+
+## 開發
+
+```bash
+node tests/selftest.mjs
+```
+
+```bash
+node tests/make-synthetic.mjs /tmp/syn
+```
+
+```bash
+python3 detector/tests/test_synthetic.py /tmp/syn
+```
+
+```bash
+node tests/ui-check.mjs /tmp/syn
+```
+
+```bash
+python3 detector/tests/test_dataset.py /tmp/syn
+```

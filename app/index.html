@@ -1,0 +1,2400 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<title>舉球軌跡</title>
+<style>
+    :root {
+        --bg: #0f1115;
+        --surface: #171a21;
+        --surface2: #1f2430;
+        --ink: #e8eaf0;
+        --muted: #9aa3b2;
+        --line: #2b3140;
+        --accent: #c4485a;
+        --on-accent: #ffffff;
+        --good: #22c55e;
+        --ok: #eab308;
+        --bad: #ef4444;
+        --warn-bg: #4a3b10;
+        --warn-ink: #ffe28a;
+        --font-ui: system-ui, -apple-system, "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", sans-serif;
+        --font-num: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+        color-scheme: dark;
+    }
+    *, *::before, *::after { box-sizing: border-box; }
+    [hidden] { display: none !important; }
+    html, body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.45 var(--font-ui); }
+    body { min-height: 100vh; -webkit-text-size-adjust: 100%; }
+    button, input, select, textarea { font: inherit; color: inherit; }
+    button {
+        background: var(--surface2); border: 1px solid var(--line); border-radius: 8px;
+        padding: 6px 10px; cursor: pointer; min-height: 34px; white-space: nowrap;
+    }
+    button:hover { border-color: #3d4558; }
+    button:disabled { opacity: .45; cursor: default; }
+    button.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+    button.on { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+    button.danger { color: #ffb4b4; border-color: #6b2a2a; }
+    button.small { min-height: 28px; padding: 3px 8px; font-size: 13px; }
+    input[type=number], input[type=text], select, textarea {
+        background: var(--surface2); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; min-height: 34px;
+    }
+    textarea { width: 100%; min-height: 54px; resize: vertical; }
+    .muted { color: var(--muted); }
+    .num { font-family: var(--font-num); font-variant-numeric: tabular-nums; }
+    .row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+    .grow { flex: 1; }
+
+    header.top {
+        display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+        padding: 8px 12px; border-bottom: 1px solid var(--line); background: var(--surface);
+        position: sticky; top: 0; z-index: 20;
+    }
+    .brand { font-weight: 700; letter-spacing: .5px; margin-right: 6px; }
+    .brand small { font-weight: 400; color: var(--muted); margin-left: 6px; }
+    .menu { position: relative; }
+    .menu-pop {
+        position: absolute; top: calc(100% + 4px); left: 0; z-index: 30; min-width: 220px;
+        background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 6px;
+        display: flex; flex-direction: column; gap: 4px; box-shadow: 0 8px 24px rgba(0,0,0,.5);
+    }
+    .menu-pop button { text-align: left; border: 0; background: transparent; }
+    .menu-pop button:hover { background: var(--surface2); }
+    #videoName { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    main.layout { display: grid; grid-template-columns: minmax(0, 1fr) 400px; gap: 12px; padding: 12px; align-items: start; }
+    @media (max-width: 900px) { main.layout { grid-template-columns: minmax(0, 1fr); padding: 8px; } }
+    .stage { min-width: 0; }
+    @media (min-width: 901px) { .stage { position: sticky; top: 60px; } }
+    .stage-row { display: flex; gap: 10px; align-items: flex-start; justify-content: center; flex-wrap: wrap; }
+    .video-box { position: relative; background: #000; border-radius: 8px; overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none; }
+    .video-box video, .video-box canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+    .video-box .empty {
+        position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+        gap: 10px; padding: 16px; text-align: center; color: var(--muted);
+    }
+    .view3d-box { display: flex; flex-direction: column; gap: 6px; }
+    .view3d-box canvas { display: block; background: #0b0e14; border-radius: 8px; touch-action: none; }
+    .view3d-tools { display: flex; gap: 4px; flex-wrap: wrap; }
+    .transport { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-top: 8px; }
+    .transport .time { margin-left: auto; font-family: var(--font-num); }
+    #timeline { width: 100%; margin: 8px 0 0; accent-color: var(--accent); }
+
+    .panel { min-width: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; }
+    .tabs { display: flex; border-bottom: 1px solid var(--line); }
+    .tabs button { flex: 1; border: 0; border-radius: 0; background: transparent; padding: 10px 4px; min-height: 42px; border-bottom: 2px solid transparent; }
+    .tabs button.on { color: var(--ink); border-bottom-color: var(--accent); background: transparent; }
+    .tab { padding: 12px; display: flex; flex-direction: column; gap: 12px; }
+    .tab h3 { margin: 0; font-size: 14px; color: var(--muted); font-weight: 600; }
+    .hint { color: var(--muted); font-size: 13px; margin: 0; }
+    .warn { background: var(--warn-bg); color: var(--warn-ink); border-radius: 8px; padding: 8px 10px; font-size: 13px; }
+    .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+    .chip { min-height: 30px; padding: 3px 9px; border-radius: 999px; font-size: 13px; }
+    .chip .ck { color: var(--good); margin-left: 4px; }
+    .chip.on .ck { color: #fff; }
+    .card { background: var(--surface2); border: 1px solid var(--line); border-radius: 10px; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+    .court-svg { width: 100%; max-width: 260px; display: block; margin: 0 auto; }
+    .court-svg .hit { cursor: pointer; }
+    .kv { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; font-size: 13px; }
+    .kv dt { color: var(--muted); }
+    .kv dd { margin: 0; font-family: var(--font-num); }
+
+    .list { display: flex; flex-direction: column; gap: 6px; }
+    .item { background: var(--surface2); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; cursor: pointer; }
+    .item.sel { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+    .item .head { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+    .item .no { font-weight: 700; }
+    .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; vertical-align: middle; }
+    .tag { font-size: 12px; padding: 1px 7px; border-radius: 999px; background: #2a3040; color: var(--ink); }
+    .tag.them { background: #3a2a2a; }
+    .grade button { min-height: 28px; padding: 2px 9px; font-size: 13px; }
+    .grade button.g-good.on { background: var(--good); border-color: var(--good); color: #062b14; }
+    .grade button.g-ok.on { background: var(--ok); border-color: var(--ok); color: #2b2205; }
+    .grade button.g-bad.on { background: var(--bad); border-color: var(--bad); color: #fff; }
+    table.stats { width: 100%; border-collapse: collapse; font-size: 13px; }
+    table.stats th, table.stats td { padding: 4px 6px; border-bottom: 1px solid var(--line); text-align: right; }
+    table.stats th:first-child, table.stats td:first-child { text-align: left; }
+    table.stats th { color: var(--muted); font-weight: 600; }
+
+    .sheet { position: fixed; inset: 0; background: rgba(0,0,0,.6); z-index: 50; display: flex; align-items: center; justify-content: center; padding: 16px; }
+    .sheet .box { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 16px; width: min(460px, 100%); max-height: calc(100vh - 32px); overflow: auto; display: flex; flex-direction: column; gap: 12px; }
+    .sheet h2 { margin: 0; font-size: 16px; }
+    .field { display: flex; flex-direction: column; gap: 4px; }
+    .field label { font-weight: 600; }
+    .toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); background: #2a3142; color: var(--ink); border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; z-index: 60; max-width: calc(100vw - 32px); box-shadow: 0 8px 24px rgba(0,0,0,.5); }
+    kbd { font-family: var(--font-num); font-size: 12px; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; padding: 0 4px; background: var(--surface2); }
+</style>
+</head>
+<body>
+<header class="top">
+    <div class="brand">舉球軌跡<small>setter-track</small></div>
+    <button id="btnOpenVideo" class="primary">開啟影片</button>
+    <span id="videoName" class="muted"></span>
+    <div class="menu">
+        <button id="btnProject">專案 ▾</button>
+        <div class="menu-pop" id="menuProject" hidden>
+            <button data-act="openProject">開啟專案檔…</button>
+            <button data-act="saveProject">下載專案檔</button>
+            <button data-act="importDet">匯入自動偵測結果…</button>
+            <button data-act="exportLabels">匯出訓練標註</button>
+            <button data-act="clearProject">清空這支影片的資料…</button>
+        </div>
+    </div>
+    <button id="btnSettings">設定</button>
+    <span id="saveState" class="muted"></span>
+    <input type="file" id="fileVideo" accept="video/*" hidden>
+    <input type="file" id="fileJson" accept=".json,application/json" hidden>
+</header>
+<main class="layout">
+    <section class="stage" id="stage">
+        <div class="stage-row">
+            <div class="video-box" id="videoBox">
+                <video id="video" playsinline muted preload="auto"></video>
+                <canvas id="overlay"></canvas>
+                <div class="empty" id="emptyHint">
+                    <div>開啟一支練球或比賽的影片（影片只在這台裝置上讀，不會上傳）</div>
+                    <button class="primary" data-act="openVideo">開啟影片</button>
+                    <div class="hint">建議：腳架固定、60fps、整場不改倍率；用 0.5x／0.7x 時記得在「場地校正」勾「廣角鏡頭」。</div>
+                </div>
+            </div>
+            <div class="view3d-box" id="view3dBox" hidden>
+                <div class="view3d-tools" id="view3dTools"></div>
+                <canvas id="view3d"></canvas>
+            </div>
+        </div>
+        <div class="transport">
+            <button data-seek="-1" title="Shift＋←">−1 秒</button>
+            <button data-step="-1" title="←">◀ 1 格</button>
+            <button id="btnPlay" title="空白鍵">▶ 播放</button>
+            <button data-step="1" title="→">1 格 ▶</button>
+            <button data-seek="1" title="Shift＋→">+1 秒</button>
+            <span class="row">
+                <button class="small" data-rate="0.25">0.25×</button>
+                <button class="small" data-rate="0.5">0.5×</button>
+                <button class="small on" data-rate="1">1×</button>
+            </span>
+            <span class="time" id="timeLabel">00:00.00</span>
+        </div>
+        <input type="range" id="timeline" min="0" max="1000" value="0" step="1" aria-label="時間軸">
+    </section>
+    <aside class="panel">
+        <nav class="tabs">
+            <button data-tab="calib" class="on">① 場地校正</button>
+            <button data-tab="mark">② 標記舉球</button>
+            <button data-tab="view">③ 檢視</button>
+        </nav>
+        <div class="tab" id="tabBody"></div>
+    </aside>
+</main>
+<div class="sheet" id="sheet" hidden><div class="box" id="sheetBox"></div></div>
+<div class="toast" id="toast" hidden></div>
+<script>
+/* @core-begin */
+// ============================================================
+// CONFIG
+// ============================================================
+const CONFIG = {
+    SCHEMA: 1,
+    APP: 'setter-track',
+    G: 9.81,
+    HALF_W: 4.5,
+    HALF_L: 9,
+    ATTACK: 3,
+    NET_HEIGHT_DEFAULT: 2.43,
+    ANTENNA_ABOVE: 0.8,
+    NET_DEPTH: 1.0,
+    BALL_R: 0.105,
+    ZONE_SPLIT: 1.5,
+    BACKROW_DIST: 3,
+    MIN_MARKS: 4,
+    GRADES: {
+        good: { label: '好', color: '#22c55e' },
+        ok: { label: '普通', color: '#eab308' },
+        bad: { label: '待改進', color: '#ef4444' },
+    },
+    NO_GRADE_COLOR: '#94a3b8',
+    TARGETS: ['大砲', '欄中', '背', '後排'],
+};
+
+const AX = { x: 0, y: 1, z: 2 };
+
+function landmarkDefs(netH) {
+    const W = CONFIG.HALF_W, L = CONFIG.HALF_L, A = CONFIG.ATTACK, aH = netH + CONFIG.ANTENNA_ABOVE;
+    return [
+        { id: 'nearBackL', label: '近端底線・左角', X: [-W, -L, 0] },
+        { id: 'nearBackR', label: '近端底線・右角', X: [W, -L, 0] },
+        { id: 'nearAtkL', label: '近端進攻線・左端', X: [-W, -A, 0] },
+        { id: 'nearAtkR', label: '近端進攻線・右端', X: [W, -A, 0] },
+        { id: 'midL', label: '中線・左端', X: [-W, 0, 0] },
+        { id: 'midR', label: '中線・右端', X: [W, 0, 0] },
+        { id: 'farAtkL', label: '遠端進攻線・左端', X: [-W, A, 0] },
+        { id: 'farAtkR', label: '遠端進攻線・右端', X: [W, A, 0] },
+        { id: 'farBackL', label: '遠端底線・左角', X: [-W, L, 0] },
+        { id: 'farBackR', label: '遠端底線・右角', X: [W, L, 0] },
+        { id: 'netTopL', label: '網子上緣・左標誌桿', X: [-W, 0, netH] },
+        { id: 'netTopR', label: '網子上緣・右標誌桿', X: [W, 0, netH] },
+        { id: 'antTopL', label: '左標誌桿頂端', X: [-W, 0, aH] },
+        { id: 'antTopR', label: '右標誌桿頂端', X: [W, 0, aH] },
+    ];
+}
+
+function lineDefs(netH) {
+    const W = CONFIG.HALF_W, L = CONFIG.HALF_L, A = CONFIG.ATTACK, aH = netH + CONFIG.ANTENNA_ABOVE;
+    return [
+        { id: 'sideL', label: '左邊線', fixed: { x: -W, z: 0 }, free: 'y', range: [-L, L] },
+        { id: 'sideR', label: '右邊線', fixed: { x: W, z: 0 }, free: 'y', range: [-L, L] },
+        { id: 'nearBack', label: '近端底線', fixed: { y: -L, z: 0 }, free: 'x', range: [-W, W] },
+        { id: 'nearAtk', label: '近端進攻線', fixed: { y: -A, z: 0 }, free: 'x', range: [-W, W] },
+        { id: 'mid', label: '中線', fixed: { y: 0, z: 0 }, free: 'x', range: [-W, W] },
+        { id: 'farAtk', label: '遠端進攻線', fixed: { y: A, z: 0 }, free: 'x', range: [-W, W] },
+        { id: 'farBack', label: '遠端底線', fixed: { y: L, z: 0 }, free: 'x', range: [-W, W] },
+        { id: 'netTop', label: '網子上緣', fixed: { y: 0, z: netH }, free: 'x', range: [-W, W] },
+        { id: 'antL', label: '左標誌桿', fixed: { x: -W, y: 0 }, free: 'z', range: [netH - CONFIG.NET_DEPTH, aH] },
+        { id: 'antR', label: '右標誌桿', fixed: { x: W, y: 0 }, free: 'z', range: [netH - CONFIG.NET_DEPTH, aH] },
+    ];
+}
+
+// 畫球場用的 3D 線段（世界座標）
+function courtSegments(netH) {
+    const W = CONFIG.HALF_W, L = CONFIG.HALF_L, A = CONFIG.ATTACK, aH = netH + CONFIG.ANTENNA_ABOVE, nb = netH - CONFIG.NET_DEPTH;
+    return {
+        floor: [
+            [[-W, -L, 0], [W, -L, 0]], [[W, -L, 0], [W, L, 0]], [[W, L, 0], [-W, L, 0]], [[-W, L, 0], [-W, -L, 0]],
+            [[-W, 0, 0], [W, 0, 0]], [[-W, -A, 0], [W, -A, 0]], [[-W, A, 0], [W, A, 0]],
+        ],
+        net: [[[-W, 0, netH], [W, 0, netH]], [[-W, 0, nb], [W, 0, nb]], [[-W, 0, nb], [-W, 0, netH]], [[W, 0, nb], [W, 0, netH]]],
+        posts: [[[-W - 0.5, 0, 0], [-W - 0.5, 0, netH + 0.1]], [[W + 0.5, 0, 0], [W + 0.5, 0, netH + 0.1]]],
+        antennas: [[[-W, 0, nb], [-W, 0, aH]], [[W, 0, nb], [W, 0, aH]]],
+    };
+}
+
+// ============================================================
+// 小工具與線性代數
+// ============================================================
+function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+function uid(prefix) {
+    return (prefix || '') + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+}
+const dot3 = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+const sub3 = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+const add3 = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
+const scale3 = (a, s) => [a[0] * s, a[1] * s, a[2] * s];
+const cross3 = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+const norm3 = a => Math.sqrt(dot3(a, a));
+const normalize3 = a => { const n = norm3(a) || 1; return [a[0] / n, a[1] / n, a[2] / n]; };
+function mat3mul(A, B) {
+    const C = new Array(9);
+    for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) {
+        C[i * 3 + j] = A[i * 3] * B[j] + A[i * 3 + 1] * B[3 + j] + A[i * 3 + 2] * B[6 + j];
+    }
+    return C;
+}
+const mat3vec = (A, v) => [A[0] * v[0] + A[1] * v[1] + A[2] * v[2], A[3] * v[0] + A[4] * v[1] + A[5] * v[2], A[6] * v[0] + A[7] * v[1] + A[8] * v[2]];
+const mat3T = A => [A[0], A[3], A[6], A[1], A[4], A[7], A[2], A[5], A[8]];
+function mat3det(A) {
+    return A[0] * (A[4] * A[8] - A[5] * A[7]) - A[1] * (A[3] * A[8] - A[5] * A[6]) + A[2] * (A[3] * A[7] - A[4] * A[6]);
+}
+function mat3inv(A) {
+    const d = mat3det(A);
+    if (Math.abs(d) < 1e-15) return null;
+    const i = 1 / d;
+    return [
+        (A[4] * A[8] - A[5] * A[7]) * i, (A[2] * A[7] - A[1] * A[8]) * i, (A[1] * A[5] - A[2] * A[4]) * i,
+        (A[5] * A[6] - A[3] * A[8]) * i, (A[0] * A[8] - A[2] * A[6]) * i, (A[2] * A[3] - A[0] * A[5]) * i,
+        (A[3] * A[7] - A[4] * A[6]) * i, (A[1] * A[6] - A[0] * A[7]) * i, (A[0] * A[4] - A[1] * A[3]) * i,
+    ];
+}
+// 高斯消去（部分選主元）。A: n×n 陣列的陣列；b: 長度 n。失敗回傳 null。
+function solveLinear(A, b) {
+    const n = b.length;
+    const M = A.map((row, i) => row.slice().concat([b[i]]));
+    for (let c = 0; c < n; c++) {
+        let p = c;
+        for (let r = c + 1; r < n; r++) if (Math.abs(M[r][c]) > Math.abs(M[p][c])) p = r;
+        if (Math.abs(M[p][c]) < 1e-14) return null;
+        if (p !== c) { const tmp = M[p]; M[p] = M[c]; M[c] = tmp; }
+        for (let r = c + 1; r < n; r++) {
+            const k = M[r][c] / M[c][c];
+            if (k === 0) continue;
+            for (let j = c; j <= n; j++) M[r][j] -= k * M[c][j];
+        }
+    }
+    const x = new Array(n);
+    for (let r = n - 1; r >= 0; r--) {
+        let s = M[r][n];
+        for (let j = r + 1; j < n; j++) s -= M[r][j] * x[j];
+        x[r] = s / M[r][r];
+    }
+    return x.every(Number.isFinite) ? x : null;
+}
+// 最小平方：rows = [[a…], …]，rhs = [b…]
+function leastSquares(rows, rhs) {
+    const m = rows[0].length;
+    const A = Array.from({ length: m }, () => new Array(m).fill(0));
+    const g = new Array(m).fill(0);
+    for (let i = 0; i < rows.length; i++) {
+        const r = rows[i];
+        for (let a = 0; a < m; a++) {
+            g[a] += r[a] * rhs[i];
+            for (let b = a; b < m; b++) A[a][b] += r[a] * r[b];
+        }
+    }
+    for (let a = 0; a < m; a++) for (let b = 0; b < a; b++) A[a][b] = A[b][a];
+    return solveLinear(A, g);
+}
+function rodrigues(w) {
+    const th = Math.sqrt(w[0] * w[0] + w[1] * w[1] + w[2] * w[2]);
+    if (th < 1e-12) return [1, -w[2], w[1], w[2], 1, -w[0], -w[1], w[0], 1];
+    const k = [w[0] / th, w[1] / th, w[2] / th], c = Math.cos(th), s = Math.sin(th), v = 1 - c;
+    return [
+        c + k[0] * k[0] * v, k[0] * k[1] * v - k[2] * s, k[0] * k[2] * v + k[1] * s,
+        k[1] * k[0] * v + k[2] * s, c + k[1] * k[1] * v, k[1] * k[2] * v - k[0] * s,
+        k[2] * k[0] * v - k[1] * s, k[2] * k[1] * v + k[0] * s, c + k[2] * k[2] * v,
+    ];
+}
+// 把接近旋轉的矩陣修成真正的旋轉矩陣（極分解迭代）
+function orthonormalize(R) {
+    let X = R.slice();
+    for (let i = 0; i < 30; i++) {
+        const inv = mat3inv(X);
+        if (!inv) break;
+        const it = mat3T(inv);
+        const nx = X.map((v, j) => 0.5 * (v + it[j]));
+        let diff = 0;
+        for (let j = 0; j < 9; j++) diff += Math.abs(nx[j] - X[j]);
+        X = nx;
+        if (diff < 1e-13) break;
+    }
+    return X;
+}
+function median(arr) {
+    if (!arr.length) return 0;
+    const s = arr.slice().sort((a, b) => a - b), m = s.length >> 1;
+    return s.length % 2 ? s[m] : 0.5 * (s[m - 1] + s[m]);
+}
+
+// Levenberg–Marquardt（數值微分）。fun(p) → 殘差陣列。
+function levenbergMarquardt(fun, p0, opts) {
+    const o = Object.assign({ maxIter: 200, tol: 1e-12 }, opts || {});
+    let p = p0.slice(), r = fun(p), cost = r.reduce((s, v) => s + v * v, 0), lambda = 1e-3;
+    const n = p.length;
+    for (let it = 0; it < o.maxIter; it++) {
+        const J = [];
+        for (let j = 0; j < n; j++) {
+            const h = 1e-6 * Math.max(1, Math.abs(p[j]));
+            const pp = p.slice(); pp[j] += h;
+            const rp = fun(pp);
+            J.push(rp.map((v, i) => (v - r[i]) / h));
+        }
+        const A = Array.from({ length: n }, () => new Array(n).fill(0)), g = new Array(n).fill(0);
+        for (let a = 0; a < n; a++) {
+            const Ja = J[a];
+            for (let i = 0; i < r.length; i++) g[a] += Ja[i] * r[i];
+            for (let b = a; b < n; b++) {
+                const Jb = J[b];
+                let s = 0;
+                for (let i = 0; i < r.length; i++) s += Ja[i] * Jb[i];
+                A[a][b] = s; A[b][a] = s;
+            }
+        }
+        let improved = false;
+        for (let tries = 0; tries < 12; tries++) {
+            const M = A.map((row, i) => row.map((v, j) => (i === j ? v + lambda * (v + 1e-9) : v)));
+            const d = solveLinear(M, g.map(v => -v));
+            if (!d) { lambda *= 10; continue; }
+            const pn = p.map((v, i) => v + d[i]);
+            const rn = fun(pn);
+            const cn = rn.reduce((s, v) => s + v * v, 0);
+            if (Number.isFinite(cn) && cn < cost) {
+                const rel = (cost - cn) / Math.max(cost, 1e-30);
+                p = pn; r = rn; cost = cn; lambda = Math.max(lambda / 3, 1e-12); improved = true;
+                if (rel < o.tol) return { p, cost, r };
+                break;
+            }
+            lambda *= 4;
+        }
+        if (!improved) break;
+    }
+    return { p, cost, r };
+}
+
+// ============================================================
+// 相機模型
+// cam = { f, cx, cy, k1, k2, R(9, 列優先), t(3), w, h }
+// ============================================================
+function camCoords(cam, X) {
+    const R = cam.R;
+    return [
+        R[0] * X[0] + R[1] * X[1] + R[2] * X[2] + cam.t[0],
+        R[3] * X[0] + R[4] * X[1] + R[5] * X[2] + cam.t[1],
+        R[6] * X[0] + R[7] * X[1] + R[8] * X[2] + cam.t[2],
+    ];
+}
+function camCenter(cam) {
+    return scale3(mat3vec(mat3T(cam.R), cam.t), -1);
+}
+// 變形曲線的折返點（r²）：超過就不是一對一，視為看不到
+function foldR2(cam) {
+    const a = 5 * (cam.k2 || 0), b = 3 * (cam.k1 || 0);
+    if (Math.abs(a) < 1e-12) return b < 0 ? -1 / b : Infinity;
+    const disc = b * b - 4 * a;
+    if (disc < 0) return Infinity;
+    const sq = Math.sqrt(disc), roots = [(-b - sq) / (2 * a), (-b + sq) / (2 * a)].filter(s => s > 0);
+    return roots.length ? Math.min(...roots) : Infinity;
+}
+function projectRaw(cam, X) {
+    const c = camCoords(cam, X);
+    const x = c[0] / c[2], y = c[1] / c[2], r2 = x * x + y * y;
+    const s = 1 + (cam.k1 || 0) * r2 + (cam.k2 || 0) * r2 * r2;
+    return [cam.f * x * s + cam.cx, cam.f * y * s + cam.cy];
+}
+// 看得到才回傳像素，否則 null
+function projectPoint(cam, X) {
+    const c = camCoords(cam, X);
+    if (c[2] <= 1e-3) return null;
+    const x = c[0] / c[2], y = c[1] / c[2], r2 = x * x + y * y;
+    if (r2 > foldR2(cam) * 0.95) return null;
+    const s = 1 + (cam.k1 || 0) * r2 + (cam.k2 || 0) * r2 * r2;
+    return [cam.f * x * s + cam.cx, cam.f * y * s + cam.cy];
+}
+// 像素 → 去掉變形後的正規化座標
+function undistortPixel(cam, u, v) {
+    const xd = (u - cam.cx) / cam.f, yd = (v - cam.cy) / cam.f;
+    const k1 = cam.k1 || 0, k2 = cam.k2 || 0;
+    if (!k1 && !k2) return [xd, yd];
+    const rd = Math.sqrt(xd * xd + yd * yd);
+    if (rd < 1e-12) return [xd, yd];
+    let r = rd;
+    for (let i = 0; i < 30; i++) {
+        const r2 = r * r;
+        const fv = r * (1 + k1 * r2 + k2 * r2 * r2) - rd;
+        const d = 1 + 3 * k1 * r2 + 5 * k2 * r2 * r2;
+        if (d <= 1e-6) break;
+        let nr = r - fv / d;
+        if (nr <= 0) nr = r / 2;
+        if (Math.abs(nr - r) < 1e-14) { r = nr; break; }
+        r = nr;
+    }
+    return [xd * r / rd, yd * r / rd];
+}
+function rayFromPixel(cam, u, v) {
+    const n = undistortPixel(cam, u, v);
+    return { o: camCenter(cam), d: normalize3(mat3vec(mat3T(cam.R), [n[0], n[1], 1])) };
+}
+// 射線與「某軸 = 值」平面的交點
+function rayPlane(ray, axis, value) {
+    const d = ray.d[axis];
+    if (Math.abs(d) < 1e-9) return null;
+    const s = (value - ray.o[axis]) / d;
+    if (s <= 0) return null;
+    return add3(ray.o, scale3(ray.d, s));
+}
+// 從位置與看向的點建立虛擬相機（無變形）
+function lookAtCamera(C, target, f, w, h) {
+    const fwd = normalize3(sub3(target, C));
+    let right = cross3(fwd, [0, 0, 1]);
+    if (norm3(right) < 1e-6) right = [1, 0, 0];
+    right = normalize3(right);
+    const down = cross3(fwd, right);
+    const R = [right[0], right[1], right[2], down[0], down[1], down[2], fwd[0], fwd[1], fwd[2]];
+    const t = scale3(mat3vec(R, C), -1);
+    return { f, cx: w / 2, cy: h / 2, k1: 0, k2: 0, R, t, w, h };
+}
+
+// ============================================================
+// 場地校正
+// ============================================================
+function normalizePts(pts) {
+    let mx = 0, my = 0;
+    for (const p of pts) { mx += p[0]; my += p[1]; }
+    mx /= pts.length; my /= pts.length;
+    let d = 0;
+    for (const p of pts) d += Math.hypot(p[0] - mx, p[1] - my);
+    d = d / pts.length || 1;
+    const s = Math.SQRT2 / d;
+    return { T: [s, 0, -s * mx, 0, s, -s * my, 0, 0, 1], pts: pts.map(p => [s * (p[0] - mx), s * (p[1] - my)]) };
+}
+// src（地板 x,y）→ dst（像素 u,v）的平面轉換
+function homography(src, dst) {
+    if (src.length < 4) return null;
+    const ns = normalizePts(src), nd = normalizePts(dst);
+    const rows = [], rhs = [];
+    for (let i = 0; i < src.length; i++) {
+        const [x, y] = ns.pts[i], [u, v] = nd.pts[i];
+        rows.push([x, y, 1, 0, 0, 0, -u * x, -u * y]); rhs.push(u);
+        rows.push([0, 0, 0, x, y, 1, -v * x, -v * y]); rhs.push(v);
+    }
+    const h = leastSquares(rows, rhs);
+    if (!h) return null;
+    const Hn = h.concat([1]);
+    const TdInv = mat3inv(nd.T);
+    if (!TdInv) return null;
+    const H = mat3mul(mat3mul(TdInv, Hn), ns.T);
+    const s = H[8] || 1;
+    return H.map(v => v / s);
+}
+function applyH(H, x, y) {
+    const w = H[6] * x + H[7] * y + H[8];
+    return [(H[0] * x + H[1] * y + H[2]) / w, (H[3] * x + H[4] * y + H[5]) / w];
+}
+// 已知主點、正方形像素時，從平面轉換估焦距；估不出來回傳 null
+function focalFromH(H, cx, cy) {
+    const T = [1, 0, -cx, 0, 1, -cy, 0, 0, 1];
+    let Hp = mat3mul(T, H);
+    const n = Math.sqrt(Hp.reduce((s, v) => s + v * v, 0));
+    Hp = Hp.map(v => v / n);
+    const [h11, h12, , h21, h22, , h31, h32] = Hp;
+    const a1 = h11 * h12 + h21 * h22, b1 = h31 * h32;
+    const a2 = h11 * h11 + h21 * h21 - h12 * h12 - h22 * h22, b2 = h31 * h31 - h32 * h32;
+    const den = a1 * a1 + a2 * a2;
+    if (den < 1e-20) return null;
+    const s = -(a1 * b1 + a2 * b2) / den;
+    if (!(s > 0)) return null;
+    return 1 / Math.sqrt(s);
+}
+function poseFromH(H, f, cx, cy) {
+    const Kinv = [1 / f, 0, -cx / f, 0, 1 / f, -cy / f, 0, 0, 1];
+    const M = mat3mul(Kinv, H);
+    const m1 = [M[0], M[3], M[6]], m2 = [M[1], M[4], M[7]], m3 = [M[2], M[5], M[8]];
+    let lam = 2 / (norm3(m1) + norm3(m2));
+    if (m3[2] * lam < 0) lam = -lam;
+    const r1 = scale3(m1, lam), r2 = scale3(m2, lam), r3 = cross3(r1, r2), t = scale3(m3, lam);
+    const R = orthonormalize([r1[0], r2[0], r3[0], r1[1], r2[1], r3[1], r1[2], r2[2], r3[2]]);
+    return { R, t };
+}
+function lineResidual(cam, line, u, v) {
+    const ray = rayFromPixel(cam, u, v);
+    const keys = Object.keys(line.fixed);
+    const ax = keys.map(k => AX[k]);
+    const pick = Math.abs(ray.d[ax[0]]) >= Math.abs(ray.d[ax[1]]) ? 0 : 1;
+    const P = rayPlane(ray, ax[pick], line.fixed[keys[pick]]);
+    if (!P) return [200, 200];
+    P[ax[1 - pick]] = line.fixed[keys[1 - pick]];
+    const q = projectRaw(cam, P);
+    return [q[0] - u, q[1] - v];
+}
+// input: { w, h, wide, points:[{X,u,v,id}], lines:[{line(lineDef), u, v}] }
+function calibrate(input) {
+    const { w, h } = input;
+    const points = input.points || [], lines = input.lines || [];
+    const floor = points.filter(p => Math.abs(p.X[2]) < 1e-9);
+    if (floor.length < 4) return { ok: false, msg: '至少要 4 個地板上的點（底線、進攻線、中線的端點）' };
+    const H = homography(floor.map(p => [p.X[0], p.X[1]]), floor.map(p => [p.u, p.v]));
+    if (!H) return { ok: false, msg: '這些點排成一直線了，算不出來；請點分散一點的角落' };
+    const cx = w / 2, cy = h / 2;
+    const nObs = points.length + lines.length;
+    const fCands = [0.35, 0.5, 0.7, 1.0, 1.4, 2.0].map(k => k * w);
+    const fH = focalFromH(H, cx, cy);
+    if (fH && fH > 0.2 * w && fH < 6 * w) fCands.unshift(fH);
+
+    const build = (p, R0, nk) => ({
+        f: p[0], cx, cy, k1: nk >= 1 ? p[7] : 0, k2: nk >= 2 ? p[8] : 0,
+        R: mat3mul(rodrigues([p[1], p[2], p[3]]), R0), t: [p[4], p[5], p[6]], w, h,
+    });
+    const residuals = cam => {
+        const r = [];
+        for (const p of points) {
+            const c = camCoords(cam, p.X);
+            if (c[2] <= 1e-3) { r.push(1e3, 1e3); continue; }
+            const q = projectRaw(cam, p.X);
+            r.push(q[0] - p.u, q[1] - p.v);
+        }
+        for (const l of lines) {
+            const e = lineResidual(cam, l.line, l.u, l.v);
+            r.push(e[0], e[1]);
+        }
+        return r;
+    };
+    const solve = (cam0, nk) => {
+        const R0 = cam0.R;
+        const p0 = [cam0.f, 0, 0, 0, cam0.t[0], cam0.t[1], cam0.t[2]];
+        if (nk >= 1) p0.push(cam0.k1 || 0);
+        if (nk >= 2) p0.push(cam0.k2 || 0);
+        const res = levenbergMarquardt(p => residuals(build(p, R0, nk)), p0);
+        const cam = build(res.p, R0, nk);
+        cam.R = orthonormalize(cam.R);
+        return { cam, cost: res.cost };
+    };
+    let best = null;
+    for (const f of fCands) {
+        const pose = poseFromH(H, f, cx, cy);
+        let cand = solve({ f, R: pose.R, t: pose.t, k1: 0, k2: 0 }, 0);
+        if (input.wide) {
+            const nk = nObs * 2 >= 7 + 2 + 6 ? 2 : (nObs * 2 >= 7 + 1 + 3 ? 1 : 0);
+            if (nk >= 1) cand = solve(cand.cam, 1);
+            if (nk >= 2) cand = solve(cand.cam, 2);
+        }
+        if (!(cand.cam.f > 0) || !Number.isFinite(cand.cost)) continue;
+        if (foldR2(cand.cam) < 0.25) continue; // 變形大到不合理
+        if (!best || cand.cost < best.cost) best = cand;
+    }
+    if (!best) return { ok: false, msg: '算不出合理的相機位置；檢查點有沒有點錯（左右、近遠端）' };
+    const cam = best.cam;
+    const perPoint = points.map(p => {
+        const q = projectRaw(cam, p.X);
+        return { id: p.id, err: Math.hypot(q[0] - p.u, q[1] - p.v) };
+    });
+    const perLine = lines.map(l => {
+        const e = lineResidual(cam, l.line, l.u, l.v);
+        return { id: l.line.id, err: Math.hypot(e[0], e[1]) };
+    });
+    const all = perPoint.concat(perLine).map(e => e.err);
+    const rms = Math.sqrt(all.reduce((s, v) => s + v * v, 0) / all.length);
+    const hasHeight = points.some(p => p.X[2] > 0) || lines.some(l => l.line.fixed.z > 0 || l.line.free === 'z');
+    const C = camCenter(cam);
+    return { ok: true, cam, rms, perPoint, perLine, hasHeight, center: C };
+}
+
+// ============================================================
+// 3D 拋物線擬合
+// obs: [{ t(實際秒), u, v }]
+// ============================================================
+function ballAt(fit, t) {
+    const s = t - fit.t0;
+    return [fit.p0[0] + fit.v0[0] * s, fit.p0[1] + fit.v0[1] * s, fit.p0[2] + fit.v0[2] * s - 0.5 * CONFIG.G * s * s];
+}
+function ballVel(fit, t) {
+    const s = t - fit.t0;
+    return [fit.v0[0], fit.v0[1], fit.v0[2] - CONFIG.G * s];
+}
+// 線性初值。代數誤差 = 深度 × 像素誤差，直接解會讓短軌跡「縮到相機上」（深度→0 誤差就→0），
+// 所以每條方程式除以估計的深度、反覆幾次（初始深度：射線碰到 2.5 m 高的位置）。
+// 很短的軌跡本來就看不出深度，再加一個很弱的先驗：起點靠近第一點射線上 2.5 m 高的位置
+// （偏 1 m 的代價約等於 0.3 px，軌跡夠長時幾乎沒有影響）。
+function fitBallisticLinear(cam, obs, t0) {
+    const R = cam.R, r1 = [R[0], R[1], R[2]], r2 = [R[3], R[4], R[5]], r3 = [R[6], R[7], R[8]], t = cam.t;
+    const C = camCenter(cam);
+    const pre = obs.map(o => {
+        const n = undistortPixel(cam, o.u, o.v), ray = rayFromPixel(cam, o.u, o.v);
+        const P = rayPlane(ray, 2, 2.5) || add3(C, scale3(ray.d, norm3(C)));
+        return { s: o.t - t0, n, z: Math.max(0.5, dot3(r3, P) + t[2]) };
+    });
+    const first = obs.reduce((m, o) => (o.t < m.t ? o : m), obs[0]);
+    const r0 = rayFromPixel(cam, first.u, first.v);
+    const prior = rayPlane(r0, 2, 2.5) || add3(C, scale3(r0.d, norm3(C)));
+    const lam = 0.3 / cam.f;
+    let sol = null;
+    for (let it = 0; it < 4; it++) {
+        const rows = [], rhs = [];
+        for (let a = 0; a < 3; a++) { const r = [0, 0, 0, 0, 0, 0]; r[a] = lam; rows.push(r); rhs.push(lam * prior[a]); }
+        for (const q of pre) {
+            const s = q.s, w = 1 / q.z, gz = [0, 0, -0.5 * CONFIG.G * s * s];
+            const ax = sub3(scale3(r3, q.n[0]), r1), ay = sub3(scale3(r3, q.n[1]), r2);
+            rows.push(ax.concat(scale3(ax, s)).map(v => v * w)); rhs.push((t[0] - q.n[0] * t[2] - dot3(ax, gz)) * w);
+            rows.push(ay.concat(scale3(ay, s)).map(v => v * w)); rhs.push((t[1] - q.n[1] * t[2] - dot3(ay, gz)) * w);
+        }
+        const next = leastSquares(rows, rhs);
+        if (!next) break;
+        sol = next;
+        for (const q of pre) {
+            const X = [sol[0] + sol[3] * q.s, sol[1] + sol[4] * q.s, sol[2] + sol[5] * q.s - 0.5 * CONFIG.G * q.s * q.s];
+            q.z = Math.max(0.5, dot3(r3, X) + t[2]);
+        }
+    }
+    return sol;
+}
+function fitBallistic(cam, obsIn) {
+    if (!cam || !obsIn || obsIn.length < CONFIG.MIN_MARKS) return null;
+    const obs = obsIn.map((o, i) => Object.assign({ i }, o)).sort((a, b) => a.t - b.t);
+    const t0 = obs[0].t;
+    const pixRes = (p, list) => {
+        const fit = { t0, p0: [p[0], p[1], p[2]], v0: [p[3], p[4], p[5]] };
+        const r = [];
+        for (const o of list) {
+            const X = ballAt(fit, o.t), c = camCoords(cam, X);
+            if (c[2] <= 1e-3) { r.push(1e3, 1e3); continue; }
+            const q = projectRaw(cam, X);
+            r.push(q[0] - o.u, q[1] - o.v);
+        }
+        return r;
+    };
+    const solveOn = list => {
+        const lin = fitBallisticLinear(cam, list, t0);
+        if (!lin) return null;
+        const res = levenbergMarquardt(p => pixRes(p, list), lin, { maxIter: 100 });
+        return res.p;
+    };
+    let inl = obs.slice();
+    let p = solveOn(inl);
+    if (!p) return null;
+    const maxDrop = Math.floor(obs.length / 4);
+    for (let k = 0; k < maxDrop && inl.length > 5; k++) {
+        const r = pixRes(p, inl), errs = inl.map((_, i) => Math.hypot(r[2 * i], r[2 * i + 1]));
+        const thr = Math.max(4, 3 * median(errs));
+        let worst = -1;
+        for (let i = 0; i < errs.length; i++) if (errs[i] > thr && (worst < 0 || errs[i] > errs[worst])) worst = i;
+        if (worst < 0) break;
+        inl = inl.filter((_, i) => i !== worst);
+        const np = solveOn(inl);
+        if (!np) break;
+        p = np;
+    }
+    const fit = { t0, p0: [p[0], p[1], p[2]], v0: [p[3], p[4], p[5]] };
+    const inSet = new Set(inl.map(o => o.i));
+    const rAll = pixRes(p, obs);
+    const errs = new Array(obsIn.length), inliers = new Array(obsIn.length);
+    obs.forEach((o, k) => { errs[o.i] = Math.hypot(rAll[2 * k], rAll[2 * k + 1]); inliers[o.i] = inSet.has(o.i); });
+    const inErr = errs.filter((_, i) => inliers[i]);
+    fit.rms = Math.sqrt(inErr.reduce((s, v) => s + v * v, 0) / inErr.length);
+    fit.errs = errs;
+    fit.inliers = inliers;
+    fit.tStart = obs[0].t;
+    fit.tEnd = obs[obs.length - 1].t;
+    return fit;
+}
+function sampleArc(fit, t1, t2, n) {
+    const out = [], N = n || 40;
+    for (let i = 0; i <= N; i++) out.push(ballAt(fit, t1 + (t2 - t1) * i / N));
+    return out;
+}
+
+// ============================================================
+// 舉球指標（攻擊方座標，見規格 2.1、6）
+// ============================================================
+function setMetrics(fit, settings) {
+    const netH = (settings && settings.netHeight) || CONFIG.NET_HEIGHT_DEFAULT;
+    const ourSide = (settings && settings.ourSide) || 'near';
+    const tS = fit.tStart, tE = fit.tEnd;
+    const s = ballAt(fit, tS), e = ballAt(fit, tE);
+    const side = s[1] <= 0 ? 'near' : 'far';
+    const m = side === 'near' ? 1 : -1;
+    const sA = [m * s[0], m * s[1], s[2]], eA = [m * e[0], m * e[1], e[2]];
+    const vz0 = ballVel(fit, tS)[2];
+    const tApex = tS + vz0 / CONFIG.G;
+    let apexZ, apexT;
+    if (tApex > tS && tApex < tE) { apexT = tApex; apexZ = ballAt(fit, tApex)[2]; }
+    else if (s[2] >= e[2]) { apexT = tS; apexZ = s[2]; }
+    else { apexT = tE; apexZ = e[2]; }
+    const distNet = -eA[1];
+    let target;
+    if (distNet > CONFIG.BACKROW_DIST) target = '後排';
+    else if (eA[0] < -CONFIG.ZONE_SPLIT) target = '大砲';
+    else if (eA[0] > CONFIG.ZONE_SPLIT) target = '背';
+    else target = '欄中';
+    const v = ballVel(fit, tS);
+    return {
+        side, team: side === ourSide ? 'us' : 'them',
+        start: s, end: e, startA: sA, endA: eA,
+        apexZ, apexT, aboveNet: apexZ - netH,
+        flight: tE - tS, target, dir: eA[0] < sA[0] ? 'to4' : 'to2',
+        distNet, startDistNet: -sA[1], speed: norm3(v),
+        horiz: Math.hypot(eA[0] - sA[0], eA[1] - sA[1]),
+    };
+}
+// 自動偵測的候選是不是「像舉球」（規格 7.1）
+function looksLikeSet(mt) {
+    const why = [];
+    if (mt.startA[2] < 1.6 || mt.startA[2] > 4) why.push('起點高度');
+    if (mt.startDistNet > 3.5 || mt.startDistNet < -0.3) why.push('起點離網太遠');
+    if (mt.flight < 0.3 || mt.flight > 2.5) why.push('飛行時間');
+    if (mt.distNet > 4.5 || mt.distNet < -0.5) why.push('終點位置');
+    if (mt.aboveNet < -0.5) why.push('沒有高過網子');
+    return { ok: why.length === 0, why };
+}
+
+// ============================================================
+// 資料格式
+// ============================================================
+function newProject(video) {
+    return {
+        schema: CONFIG.SCHEMA, app: CONFIG.APP, created: Date.now(), updated: Date.now(),
+        video: Object.assign({ name: '', size: 0, duration: 0, w: 0, h: 0, fps: 60, realPerVideo: 1 }, video || {}),
+        settings: { netHeight: CONFIG.NET_HEIGHT_DEFAULT, ourSide: 'near', wide: false },
+        calib: { points: {}, lines: {}, cam: null, rms: null },
+        sets: [], candidates: [],
+    };
+}
+function newSet(src) {
+    return { id: uid('s_'), marks: [], grade: null, note: '', src: src || 'manual', created: Date.now() };
+}
+const isNum = v => typeof v === 'number' && Number.isFinite(v);
+function migrate(obj) {
+    if (!obj || typeof obj !== 'object' || obj.app !== CONFIG.APP) return { ok: false, msg: '這不是舉球軌跡的專案檔' };
+    if (!isNum(obj.schema) || obj.schema > CONFIG.SCHEMA) return { ok: false, msg: '這個專案檔的版本比工具新，請更新工具' };
+    const p = newProject(obj.video);
+    p.created = isNum(obj.created) ? obj.created : p.created;
+    p.updated = isNum(obj.updated) ? obj.updated : p.updated;
+    Object.assign(p.settings, obj.settings || {});
+    if (!isNum(p.settings.netHeight)) p.settings.netHeight = CONFIG.NET_HEIGHT_DEFAULT;
+    if (p.settings.ourSide !== 'far') p.settings.ourSide = 'near';
+    p.settings.wide = !!p.settings.wide;
+    if (!isNum(p.video.fps) || p.video.fps <= 0) p.video.fps = 60;
+    if (!isNum(p.video.realPerVideo) || p.video.realPerVideo <= 0) p.video.realPerVideo = 1;
+    const c = obj.calib || {};
+    const okPt = q => q && isNum(q.u) && isNum(q.v);
+    for (const [k, q] of Object.entries(c.points || {})) if (okPt(q)) p.calib.points[k] = { u: q.u, v: q.v };
+    for (const [k, arr] of Object.entries(c.lines || {})) if (Array.isArray(arr)) p.calib.lines[k] = arr.filter(okPt).map(q => ({ u: q.u, v: q.v }));
+    if (c.cam && isNum(c.cam.f) && Array.isArray(c.cam.R) && c.cam.R.length === 9 && Array.isArray(c.cam.t)) p.calib.cam = c.cam;
+    p.calib.rms = isNum(c.rms) ? c.rms : null;
+    const okMark = m => m && isNum(m.t) && isNum(m.u) && isNum(m.v);
+    for (const s of Array.isArray(obj.sets) ? obj.sets : []) {
+        if (!s || !Array.isArray(s.marks)) continue;
+        p.sets.push({
+            id: typeof s.id === 'string' ? s.id : uid('s_'),
+            marks: s.marks.filter(okMark).map(m => ({ t: m.t, u: m.u, v: m.v })),
+            grade: CONFIG.GRADES[s.grade] ? s.grade : null,
+            note: typeof s.note === 'string' ? s.note : '',
+            src: s.src === 'auto' ? 'auto' : 'manual',
+            created: isNum(s.created) ? s.created : Date.now(),
+        });
+    }
+    for (const cd of Array.isArray(obj.candidates) ? obj.candidates : []) {
+        if (!cd || !Array.isArray(cd.points)) continue;
+        const dis = Array.isArray(cd.dismissed) ? cd.dismissed.filter(r => Array.isArray(r) && isNum(r[0]) && isNum(r[1])).map(r => [r[0], r[1]]) : [];
+        p.candidates.push({ id: String(cd.id || uid('c_')), points: cd.points.filter(okMark).map(m => ({ t: m.t, u: m.u, v: m.v })), dismissed: dis });
+    }
+    return { ok: true, project: p };
+}
+function calibInputFromProject(p) {
+    const netH = p.settings.netHeight;
+    const lm = landmarkDefs(netH), ld = lineDefs(netH);
+    const points = lm.filter(d => p.calib.points[d.id]).map(d => ({ id: d.id, X: d.X, u: p.calib.points[d.id].u, v: p.calib.points[d.id].v }));
+    const lines = [];
+    for (const d of ld) for (const q of p.calib.lines[d.id] || []) lines.push({ line: d, u: q.u, v: q.v });
+    return { w: p.video.w, h: p.video.h, wide: p.settings.wide, points, lines };
+}
+function deriveSet(p, s) {
+    const cam = p.calib.cam, k = p.video.realPerVideo || 1;
+    const obs = s.marks.map(m => ({ t: m.t * k, u: m.u, v: m.v }));
+    const fit = cam ? fitBallistic(cam, obs) : null;
+    const metrics = fit ? setMetrics(fit, p.settings) : null;
+    const tVideo = s.marks.length ? Math.min(...s.marks.map(m => m.t)) : 0;
+    return { set: s, fit, metrics, tVideo };
+}
+function deriveAll(p) {
+    return p.sets.map(s => deriveSet(p, s)).sort((a, b) => a.tVideo - b.tVideo);
+}
+function summarize(derived) {
+    const out = {};
+    for (const team of ['us', 'them']) {
+        out[team] = {};
+        for (const tg of CONFIG.TARGETS) out[team][tg] = { n: 0, apex: 0, flight: 0, grades: { good: 0, ok: 0, bad: 0, none: 0 } };
+    }
+    for (const d of derived) {
+        if (!d.metrics) continue;
+        const g = out[d.metrics.team][d.metrics.target];
+        g.n++; g.apex += d.metrics.apexZ; g.flight += d.metrics.flight;
+        g.grades[d.set.grade || 'none']++;
+    }
+    for (const team of ['us', 'them']) for (const tg of CONFIG.TARGETS) {
+        const g = out[team][tg];
+        if (g.n) { g.apex /= g.n; g.flight /= g.n; }
+    }
+    return out;
+}
+// 偵測結果（Python → 網頁，規格 7.1）：每條是連續追到的球軌跡，還沒切段
+function parseDetections(obj) {
+    if (!obj || obj.app !== 'setter-track-detector' || !Array.isArray(obj.tracks)) return { ok: false, msg: '這不是偵測結果檔（detect.py 的輸出）' };
+    const tracks = [];
+    for (const s of obj.tracks) {
+        if (!s || !Array.isArray(s.points)) continue;
+        const pts = s.points.filter(m => m && isNum(m.t) && isNum(m.u) && isNum(m.v)).map(m => ({ t: m.t, u: m.u, v: m.v })).sort((a, b) => a.t - b.t);
+        if (pts.length >= CONFIG.MIN_MARKS) tracks.push({ id: String(s.id != null ? s.id : uid('c_')), points: pts, dismissed: [] });
+    }
+    return { ok: true, video: obj.video || {}, tracks };
+}
+// 把一條連續的球軌跡切成一段段拋物線（球被碰到的地方會折斷）。
+// 用相機模型算真正的重投影誤差，所以透視、廣角變形都不影響。pts 要依時間排序，t 是實際秒。
+function splitBallistic(cam, pts, opts) {
+    const o = Object.assign({ tol: 3, minLen: 6 }, opts || {});
+    const n = pts.length, segs = [];
+    const errAt = (fit, k) => {
+        const X = ballAt(fit, pts[k].t);
+        if (camCoords(cam, X)[2] <= 1e-3) return 1e9;
+        const q = projectRaw(cam, X);
+        return Math.hypot(q[0] - pts[k].u, q[1] - pts[k].v);
+    };
+    const lin = idx => {
+        const t0 = pts[idx[0]].t, p = fitBallisticLinear(cam, idx.map(k => pts[k]), t0);
+        return p ? { t0, p0: p.slice(0, 3), v0: p.slice(3) } : null;
+    };
+    const good = (fit, idx) => fit && idx.every(k => errAt(fit, k) <= o.tol);
+    let i = 0;
+    while (i + o.minLen <= n) {
+        const idx = [];
+        for (let k = i; k < i + o.minLen; k++) idx.push(k);
+        let fit = lin(idx);
+        if (!good(fit, idx)) { i++; continue; }
+        let j = i + o.minLen;
+        while (j < n) {
+            if (errAt(fit, j) <= o.tol) { idx.push(j); j++; if (idx.length % 3 === 0) fit = lin(idx) || fit; continue; }
+            const withJ = idx.concat([j]), fj = lin(withJ);
+            if (good(fj, withJ)) { fit = fj; idx.push(j); j++; continue; }
+            // 只是一個雜點？跳過它，後面兩點還接得上就繼續
+            if (j + 2 < n) {
+                const skip = idx.concat([j + 1, j + 2]), fs = lin(skip);
+                if (good(fs, skip)) { fit = fs; idx.push(j + 1, j + 2); j += 3; continue; }
+            }
+            break;
+        }
+        segs.push(idx.map(k => pts[k]));
+        i = j;
+    }
+    return segs;
+}
+// 匯入的軌跡 → 切段 → 擬合 → 判斷像不像舉球。已經是舉球（或被略過）的時間段不再列出。
+function deriveCandidates(p) {
+    const cam = p.calib.cam, k = p.video.realPerVideo || 1;
+    if (!cam) return { ready: false, list: [] };
+    const tol = Math.max(2.5, 0.0025 * (p.video.w || cam.w || 1280));
+    const taken = deriveAll(p).filter(d => d.fit).map(d => [d.fit.tStart / k, d.fit.tEnd / k]);
+    const segs = [];
+    for (const c of p.candidates) {
+        const pts = c.points.map(m => ({ t: m.t * k, u: m.u, v: m.v, tv: m.t }));
+        for (const seg of splitBallistic(cam, pts, { tol })) segs.push({ cand: c, pts: seg });
+    }
+    // 偵測漏了幾格、軌跡斷成兩條時，後半截會從半空中開始，很像一顆舉球。
+    // 前一段結束後 0.3 秒內開始、兩段合起來還是同一條拋物線 → 接回去（真的被碰到的話接不起來）。
+    segs.sort((a, b) => a.pts[0].t - b.pts[0].t);
+    const merged = [];
+    for (const sg of segs) {
+        let joined = false;
+        for (let i = merged.length - 1; i >= 0 && i >= merged.length - 8 && !joined; i--) {
+            const r = merged[i], gap = sg.pts[0].t - r.pts[r.pts.length - 1].t;
+            if (gap <= 0 || gap > 0.3) continue;
+            const all = r.pts.concat(sg.pts), f = fitBallistic(cam, all);
+            if (f && f.rms <= tol && f.inliers.filter(x => !x).length <= Math.max(1, all.length * 0.1)) { merged[i] = { cand: r.cand, pts: all }; joined = true; }
+        }
+        if (!joined) merged.push(sg);
+    }
+    const list = [];
+    for (const { cand: c, pts: seg } of merged) {
+        {
+            const tv0 = seg[0].tv, tv1 = seg[seg.length - 1].tv, mid = 0.5 * (tv0 + tv1);
+            if ((c.dismissed || []).some(r => mid >= r[0] && mid <= r[1])) continue;
+            if (taken.some(r => mid >= r[0] && mid <= r[1])) continue;
+            const fit = fitBallistic(cam, seg);
+            if (!fit) continue;
+            const metrics = setMetrics(fit, p.settings), like = looksLikeSet(metrics);
+            if (fit.rms > tol) { like.ok = false; like.why.push('不像一條拋物線'); }
+            list.push({ key: `${c.id}@${tv0.toFixed(3)}`, cand: c, points: seg.map(m => ({ t: m.tv, u: m.u, v: m.v })), fit, metrics, like, tVideo: tv0, tVideoEnd: tv1 });
+        }
+    }
+    list.sort((a, b) => a.tVideo - b.tVideo);
+    return { ready: true, list };
+}
+// 訓練標註（網頁 → Python，規格 7.2）
+function buildLabels(p) {
+    const cam = p.calib.cam, k = p.video.realPerVideo || 1, labels = [];
+    if (!cam) return { app: 'setter-track-labels', version: 1, video: { name: p.video.name, w: p.video.w, h: p.video.h }, labels };
+    for (const d of deriveAll(p)) {
+        if (!d.fit) continue;
+        d.set.marks.forEach((m, i) => {
+            if (!d.fit.inliers[i]) return;
+            const X = ballAt(d.fit, m.t * k), c = camCoords(cam, X);
+            if (c[2] <= 0.1) return;
+            const r = cam.f * CONFIG.BALL_R / c[2];
+            labels.push({ t: m.t, u: +m.u.toFixed(2), v: +m.v.toFixed(2), r: +r.toFixed(2) });
+        });
+    }
+    labels.sort((a, b) => a.t - b.t);
+    return { app: 'setter-track-labels', version: 1, video: { name: p.video.name, w: p.video.w, h: p.video.h }, labels };
+}
+function fmtTime(sec) {
+    if (!isNum(sec)) return '--:--';
+    const m = Math.floor(sec / 60), s = sec - m * 60;
+    return `${String(m).padStart(2, '0')}:${s.toFixed(2).padStart(5, '0')}`;
+}
+
+// ============================================================
+// SELFTEST（node tests/selftest.mjs，或瀏覽器主控台 runSelfTests()）
+// ============================================================
+function runSelfTests() {
+    const results = [];
+    const T = (name, fn) => {
+        try { fn(); results.push({ name, ok: true }); }
+        catch (e) { results.push({ name, ok: false, error: String(e && e.message || e) }); }
+    };
+    const ok = (c, msg) => { if (!c) throw new Error(msg || '不成立'); };
+    const near = (a, b, tol, msg) => { if (!(Math.abs(a - b) <= tol)) throw new Error(`${msg || ''} 預期 ${b}±${tol}，實際 ${a}`); };
+    const dist = (a, b) => norm3(sub3(a, b));
+    let seed = 20261104;
+    const rnd = () => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648; };
+    const gauss = () => { const u = Math.max(rnd(), 1e-12), v = rnd(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v); };
+    const W = 1920, H = 1080, netH = 2.43;
+    const mkCam = (C, target, fFrac, k1, k2) => { const c = lookAtCamera(C, target, fFrac * W, W, H); c.k1 = k1 || 0; c.k2 = k2 || 0; return c; };
+    const inImage = q => q && q[0] >= 0 && q[0] < W && q[1] >= 0 && q[1] < H;
+    const synthCalib = (cam, noise, withLines, wide) => {
+        const points = [], lines = [];
+        for (const d of landmarkDefs(netH)) {
+            const q = projectPoint(cam, d.X);
+            if (inImage(q)) points.push({ id: d.id, X: d.X, u: q[0] + noise * gauss(), v: q[1] + noise * gauss() });
+        }
+        if (withLines) for (const d of lineDefs(netH)) for (let i = 1; i < 10; i++) {
+            const X = [0, 0, 0];
+            for (const [k, v] of Object.entries(d.fixed)) X[AX[k]] = v;
+            X[AX[d.free]] = d.range[0] + (d.range[1] - d.range[0]) * i / 10;
+            const q = projectPoint(cam, X);
+            if (inImage(q)) lines.push({ line: d, u: q[0] + noise * gauss(), v: q[1] + noise * gauss() });
+        }
+        return { w: W, h: H, wide: wide != null ? wide : !!(cam.k1 || cam.k2), points, lines };
+    };
+    // 真實舉球：起點 s、終點 e、飛行 T 秒
+    const trueFit = (s, e, dur) => {
+        const v0 = [(e[0] - s[0]) / dur, (e[1] - s[1]) / dur, (e[2] - s[2]) / dur + 0.5 * CONFIG.G * dur];
+        return { t0: 0, p0: s, v0, tStart: 0, tEnd: dur };
+    };
+    const observe = (cam, fit, noise, fps, step) => {
+        const obs = [];
+        for (let t = 0; t <= fit.tEnd + 1e-9; t += step / fps) {
+            const q = projectPoint(cam, ballAt(fit, t));
+            if (q) obs.push({ t, u: q[0] + noise * gauss(), v: q[1] + noise * gauss() });
+        }
+        return obs;
+    };
+    // 示範影片那種角度：近端底線後方的角落，0.7x 廣角
+    const wideCam = mkCam([-7, -13, 3.2], [0, -1, 1.2], 0.55, -0.12, 0.02);
+    const plainCam = mkCam([0.5, -14, 3.5], [0, 0, 1], 0.8, 0, 0);
+    const setTo4 = trueFit([0.5, -0.7, 2.5], [-3.6, -0.9, 3.0], 1.15);
+
+    T('旋轉矩陣是正交的', () => {
+        const R = rodrigues([0.3, -1.2, 2.0]);
+        const I = mat3mul(R, mat3T(R));
+        for (let i = 0; i < 9; i++) near(I[i], i % 4 === 0 ? 1 : 0, 1e-12, `RRᵀ[${i}]`);
+        near(mat3det(R), 1, 1e-12, 'det');
+        const Rn = orthonormalize(R.map(v => v * 1.01 + 0.002));
+        near(mat3det(Rn), 1, 1e-9, '修正後 det');
+    });
+
+    T('廣角變形：投影再反變形回到原點', () => {
+        const cam = { f: 1000, cx: 960, cy: 540, k1: -0.2, k2: 0.04, R: [1, 0, 0, 0, 1, 0, 0, 0, 1], t: [0, 0, 0] };
+        for (let i = 1; i <= 20; i++) {
+            const a = i * 0.7, r = i * 0.045, x = r * Math.cos(a), y = r * Math.sin(a);
+            const q = projectRaw(cam, [x, y, 1]);
+            const n = undistortPixel(cam, q[0], q[1]);
+            near(n[0], x, 1e-9, 'x'); near(n[1], y, 1e-9, 'y');
+        }
+    });
+
+    T('平面轉換：4 點以上精確對應', () => {
+        const src = [[-4.5, -9], [4.5, -9], [4.5, 9], [-4.5, 9], [0, 0]];
+        const dst = src.map(([x, y]) => projectRaw(plainCam, [x, y, 0]));
+        const Hm = homography(src, dst);
+        for (let i = 0; i < src.length; i++) {
+            const q = applyH(Hm, src[i][0], src[i][1]);
+            near(q[0], dst[i][0], 1e-6, 'u'); near(q[1], dst[i][1], 1e-6, 'v');
+        }
+        const f = focalFromH(Hm, W / 2, H / 2);
+        near(f, plainCam.f, plainCam.f * 0.01, '由平面轉換估的焦距');
+    });
+
+    T('校正：一般鏡頭', () => {
+        const r = calibrate(synthCalib(plainCam, 0.5, false, false));
+        ok(r.ok, r.msg);
+        near(r.cam.f, plainCam.f, plainCam.f * 0.02, '焦距');
+        ok(dist(r.center, camCenter(plainCam)) < 0.15, `相機位置誤差 ${dist(r.center, camCenter(plainCam)).toFixed(3)} m`);
+        ok(r.rms < 1, `RMS ${r.rms}`);
+        ok(r.hasHeight, '有網子的點');
+    });
+
+    T('校正：0.7x 廣角要勾「廣角鏡頭」才準', () => {
+        const input = synthCalib(wideCam, 0.5, true, true);
+        ok(input.points.length >= 8, `看得到的已知點太少：${input.points.length}`);
+        const r = calibrate(input);
+        ok(r.ok, r.msg);
+        ok(r.rms < 1.2, `RMS ${r.rms}`);
+        near(r.cam.f, wideCam.f, wideCam.f * 0.04, '焦距');
+        ok(dist(r.center, camCenter(wideCam)) < 0.25, `相機位置誤差 ${dist(r.center, camCenter(wideCam)).toFixed(3)} m`);
+        const r2 = calibrate(Object.assign({}, input, { wide: false }));
+        ok(r2.ok && r2.rms > 3 * r.rms, `沒勾廣角時誤差應該明顯變大：${r2.rms} vs ${r.rms}`);
+    });
+
+    T('校正：4 個地板點＋直線上的點也算得出', () => {
+        const full = synthCalib(wideCam, 0.5, true, true);
+        const keep = ['midL', 'midR', 'farBackL', 'farBackR', 'netTopL', 'netTopR'];
+        const input = Object.assign({}, full, { points: full.points.filter(p => keep.includes(p.id)) });
+        ok(input.points.filter(p => p.X[2] === 0).length >= 4, '測試資料要有 4 個地板點');
+        const r = calibrate(input);
+        ok(r.ok, r.msg);
+        ok(r.rms < 1.5, `RMS ${r.rms}`);
+        ok(dist(r.center, camCenter(wideCam)) < 0.4, `相機位置誤差 ${dist(r.center, camCenter(wideCam)).toFixed(3)} m`);
+    });
+
+    T('校正：地板點不夠時給清楚的訊息', () => {
+        const input = synthCalib(plainCam, 0, false, false);
+        input.points = input.points.filter(p => p.X[2] === 0).slice(0, 3);
+        const r = calibrate(input);
+        ok(!r.ok && /4 個地板/.test(r.msg), r.msg);
+    });
+
+    T('擬合：往 4 號位的高球（廣角、1 px 雜訊）', () => {
+        const cal = calibrate(synthCalib(wideCam, 0.5, true, true));
+        ok(cal.ok, cal.msg);
+        const obs = observe(wideCam, setTo4, 1, 60, 3);
+        ok(obs.length >= 15, `觀測點 ${obs.length}`);
+        const fit = fitBallistic(cal.cam, obs);
+        ok(fit, '擬合失敗');
+        const mt = setMetrics(fit, { netHeight: netH, ourSide: 'near' });
+        const tr = setMetrics(Object.assign({}, setTo4, { tStart: fit.tStart, tEnd: fit.tEnd }), { netHeight: netH });
+        near(mt.apexZ, tr.apexZ, 0.15, '最高點');
+        ok(dist(mt.start, tr.start) < 0.3, `起點誤差 ${dist(mt.start, tr.start).toFixed(3)}`);
+        ok(dist(mt.end, tr.end) < 0.3, `終點誤差 ${dist(mt.end, tr.end).toFixed(3)}`);
+        ok(mt.target === '大砲' && mt.dir === 'to4' && mt.team === 'us', `${mt.target} ${mt.dir} ${mt.team}`);
+        ok(fit.rms < 2, `RMS ${fit.rms}`);
+    });
+
+    T('擬合：點錯的點會被剔除', () => {
+        const obs = observe(wideCam, setTo4, 0.5, 60, 3);
+        obs[4].u += 40; obs[11].v -= 35;
+        const fit = fitBallistic(wideCam, obs);
+        ok(!fit.inliers[4] && !fit.inliers[11], '離群點應該被標出來');
+        ok(fit.inliers.filter(Boolean).length >= obs.length - 3, '不應該剔除太多');
+        const mt = setMetrics(fit, { netHeight: netH });
+        const tr = setMetrics(Object.assign({}, setTo4, { tStart: fit.tStart, tEnd: fit.tEnd }), { netHeight: netH });
+        near(mt.apexZ, tr.apexZ, 0.1, '最高點');
+    });
+
+    T('擬合：點太少不擬合', () => {
+        const obs = observe(wideCam, setTo4, 0, 60, 3).slice(0, 3);
+        ok(fitBallistic(wideCam, obs) === null, '少於 4 點應回傳 null');
+    });
+
+    T('指標：背、欄中、後排、遠端對方的舉球', () => {
+        const st = { netHeight: netH, ourSide: 'near' };
+        let m = setMetrics(trueFit([0.5, -0.7, 2.5], [3.8, -0.8, 2.9], 1.0), st);
+        ok(m.target === '背' && m.dir === 'to2', `背：${m.target} ${m.dir}`);
+        m = setMetrics(trueFit([0.6, -0.5, 2.5], [0.1, -0.4, 2.9], 0.35), st);
+        ok(m.target === '欄中', `欄中：${m.target}`);
+        m = setMetrics(trueFit([0.5, -0.8, 2.5], [0, -4.2, 3.0], 1.1), st);
+        ok(m.target === '後排', `後排：${m.target}`);
+        m = setMetrics(trueFit([-0.5, 0.7, 2.5], [3.6, 0.9, 3.0], 1.15), st);
+        ok(m.side === 'far' && m.team === 'them' && m.target === '大砲' && m.dir === 'to4', `遠端：${m.side} ${m.team} ${m.target} ${m.dir}`);
+        m = setMetrics(setTo4, st);
+        near(m.apexZ, 2.5 + (0.5 / 1.15 + 0.5 * 9.81 * 1.15) ** 2 / (2 * 9.81), 1e-9, '最高點公式');
+        near(m.aboveNet, m.apexZ - netH, 1e-12, '高出網子');
+        near(m.flight, 1.15, 1e-12, '飛行時間');
+    });
+
+    T('慢動作：影片 1 秒 = 實際 0.125 秒', () => {
+        const p = newProject({ w: W, h: H, realPerVideo: 0.125 });
+        p.calib.cam = wideCam;
+        const s = newSet('manual');
+        s.marks = observe(wideCam, setTo4, 0, 60, 3).map(o => ({ t: 100 + o.t / 0.125, u: o.u, v: o.v }));
+        p.sets.push(s);
+        const d = deriveSet(p, s);
+        const tr = setMetrics(setTo4, { netHeight: netH });
+        near(d.metrics.apexZ, tr.apexZ, 0.02, '最高點');
+        near(d.metrics.flight, tr.flight, 0.02, '飛行時間');
+        near(d.tVideo, 100, 1e-9, '影片時間');
+    });
+
+    T('像不像舉球（自動偵測的候選過濾）', () => {
+        ok(looksLikeSet(setMetrics(setTo4, {})).ok, '舉球應該通過');
+        const serve = setMetrics(trueFit([0, -10, 2.9], [0.5, 6, 0.5], 1.0), {});
+        ok(!looksLikeSet(serve).ok, '發球不應該通過');
+    });
+
+    T('專案檔：存了再讀回來一樣', () => {
+        const p = newProject({ name: 'a.mp4', w: W, h: H });
+        p.calib.points.midL = { u: 10, v: 20 };
+        p.calib.lines.sideL = [{ u: 1, v: 2 }, { u: 3, v: 4 }];
+        p.calib.cam = plainCam;
+        const s = newSet(); s.marks = [{ t: 1, u: 2, v: 3 }, { t: 'x', u: 1, v: 1 }]; s.grade = 'good'; s.note = '<b>';
+        p.sets.push(s);
+        const r = migrate(JSON.parse(JSON.stringify(p)));
+        ok(r.ok, r.msg);
+        ok(r.project.sets[0].marks.length === 1, '壞掉的標記點要濾掉');
+        ok(r.project.sets[0].grade === 'good' && r.project.sets[0].note === '<b>', '評等、註解');
+        ok(r.project.calib.lines.sideL.length === 2 && r.project.calib.points.midL.u === 10, '校正點');
+        ok(r.project.calib.cam.f === plainCam.f, '相機');
+        ok(!migrate({ app: 'x' }).ok, '別的檔案要擋下來');
+        ok(!migrate({ app: CONFIG.APP, schema: 99 }).ok, '太新的版本要擋下來');
+    });
+
+    T('訓練標註：每個好的標記點都有球的半徑', () => {
+        const p = newProject({ name: 'a.mp4', w: W, h: H });
+        p.calib.cam = wideCam;
+        const s = newSet(); s.marks = observe(wideCam, setTo4, 0.3, 60, 3); p.sets.push(s);
+        const L = buildLabels(p);
+        ok(L.labels.length === s.marks.length, `標註數 ${L.labels.length}`);
+        ok(L.labels.every(l => l.r > 2 && l.r < 60), '半徑不合理');
+    });
+
+    T('偵測結果檔：格式檢查', () => {
+        ok(!parseDetections({ app: 'x' }).ok, '別的檔案要擋下來');
+        const r = parseDetections({ app: 'setter-track-detector', tracks: [{ id: 1, points: [{ t: 0, u: 1, v: 1 }] }, { id: 2, points: [3, 1, 2, 0].map(i => ({ t: i, u: i, v: i })) }] });
+        ok(r.ok && r.tracks.length === 1 && r.tracks[0].id === '2', '太短的軌跡要濾掉');
+        ok(r.tracks[0].points[0].t === 0, '依時間排序');
+    });
+
+    // 一條連續的球：接球 → 舉球 → 扣球（三段拋物線），加雜訊與兩個雜點
+    const rally = () => {
+        const pass = trueFit([-1.0, -7.5, 0.9], [0.5, -0.7, 2.5], 1.0);
+        const set = Object.assign({}, setTo4, { t0: 1.0, tStart: 1.0, tEnd: 2.15 });
+        const e = ballAt(setTo4, 1.15), atk0 = trueFit(e, [1.0, 5.5, 0.11], 0.38);
+        const atk = Object.assign({}, atk0, { t0: 2.15, tStart: 2.15, tEnd: 2.53 });
+        const pts = [];
+        for (let f = 0; f / 60 < 2.53; f++) {
+            const t = f / 60, fit = t < 1.0 ? pass : t < 2.15 ? set : atk;
+            const q = projectPoint(wideCam, ballAt(fit, t));
+            if (q && inImage(q)) pts.push({ t, u: q[0] + 0.7 * gauss(), v: q[1] + 0.7 * gauss() });
+        }
+        pts[70].u += 30; pts[100].v -= 25;
+        return pts;
+    };
+
+    T('切段：一條連續的球切成接球、舉球、扣球', () => {
+        const pts = rally();
+        const segs = splitBallistic(wideCam, pts, { tol: 3 });
+        const setSeg = segs.find(s => s[0].t > 0.9 && s[0].t < 1.1);
+        ok(setSeg, `找不到舉球那一段：${segs.map(s => s[0].t.toFixed(2) + '–' + s[s.length - 1].t.toFixed(2)).join(', ')}`);
+        ok(Math.abs(setSeg[0].t - 1.0) <= 2 / 60 + 1e-9 && Math.abs(setSeg[setSeg.length - 1].t - 2.15) <= 2 / 60 + 1e-9, `舉球段 ${setSeg[0].t.toFixed(3)}–${setSeg[setSeg.length - 1].t.toFixed(3)}`);
+        ok(segs.length <= 4, `段數 ${segs.length}`);
+        ok(!setSeg.some(m => m === pts[70] || m === pts[100]), '雜點要被跳過');
+    });
+
+    T('候選：軌跡斷成兩條時，半截的接球不會被當成舉球', () => {
+        // 實際遇到的情況（tests/make-synthetic.mjs 的相機）：遠端的接球漏了幾格、軌跡斷開，
+        // 後半截從網前半空中開始、飛 0.3 秒到舉球員，看起來像一顆快攻
+        const cam = lookAtCamera([-6.5, -12.5, 2.2], [0.5, -1, 1.6], 0.55 * 1280, 1280, 720);
+        cam.k1 = -0.12; cam.k2 = 0.02;
+        const pass = trueFit([0.5, 7.0, 0.9], [-0.7, 0.6, 2.4], 1.0);
+        const pts = [];
+        for (let f = 0; f < 60; f++) {
+            const q = projectPoint(cam, ballAt(pass, f / 60));
+            pts.push({ t: f / 60 + 0.5 / 60, u: q[0] + 0.4 * gauss(), v: q[1] + 0.4 * gauss() });
+        }
+        const p = newProject({ w: 1280, h: 720 });
+        p.calib.cam = cam;
+        p.candidates = parseDetections({ app: 'setter-track-detector', tracks: [{ id: 'a', points: pts.slice(0, 36) }, { id: 'b', points: pts.slice(41) }] }).tracks;
+        const list = deriveCandidates(p).list;
+        ok(!list.some(c => c.like.ok), `不應該有像舉球的段：${list.map(c => c.tVideo.toFixed(2) + (c.like.ok ? ' 像 ' + c.metrics.target : ' 不像')).join('、')}`);
+        ok(list.length === 1, `兩截應該接成一段（${list.length} 段）`);
+    });
+
+    T('候選：只有舉球那段像舉球；加入後不再列出', () => {
+        const p = newProject({ w: W, h: H });
+        p.calib.cam = wideCam;
+        p.candidates = parseDetections({ app: 'setter-track-detector', tracks: [{ id: 'a', points: rally() }] }).tracks;
+        let r = deriveCandidates(p);
+        const likes = r.list.filter(c => c.like.ok);
+        ok(likes.length === 1 && likes[0].metrics.target === '大砲', `像舉球的段：${likes.length}`);
+        const s = newSet('auto'); s.marks = likes[0].points; p.sets.push(s);
+        r = deriveCandidates(p);
+        ok(!r.list.some(c => c.like.ok), '已加入的不再列出');
+        p.candidates[0].dismissed.push([r.list[0].tVideo, r.list[0].tVideoEnd]);
+        ok(deriveCandidates(p).list.length === r.list.length - 1, '略過的不再列出');
+    });
+
+    T('統計：依隊伍與目標區分組', () => {
+        const p = newProject({ w: W, h: H });
+        p.calib.cam = wideCam;
+        const a = newSet(); a.marks = observe(wideCam, setTo4, 0, 60, 3); a.grade = 'good';
+        const b = newSet(); b.marks = observe(wideCam, trueFit([0.5, -0.7, 2.5], [3.8, -0.8, 2.9], 1.0), 0, 60, 3).map(m => Object.assign({}, m, { t: m.t + 10 }));
+        p.sets.push(b, a);
+        const d = deriveAll(p);
+        ok(d[0].set === a, '依時間排序');
+        const sm = summarize(d);
+        ok(sm.us['大砲'].n === 1 && sm.us['大砲'].grades.good === 1 && sm.us['背'].n === 1 && sm.us['背'].grades.none === 1, JSON.stringify(sm.us));
+    });
+
+    T('跳脫 HTML', () => {
+        ok(esc('<a href="x">&\'</a>') === '&lt;a href=&quot;x&quot;&gt;&amp;&#39;&lt;/a&gt;', esc('<a href="x">&\'</a>'));
+    });
+
+    const passed = results.filter(r => r.ok).length;
+    return { results, passed, failed: results.length - passed, total: results.length };
+}
+/* @core-end */
+
+// ============================================================
+// UI（以下會碰 DOM）
+// ============================================================
+const $ = sel => document.querySelector(sel);
+const video = $('#video'), overlay = $('#overlay'), videoBox = $('#videoBox'), view3d = $('#view3d'), view3dBox = $('#view3dBox');
+const S = {
+    project: newProject(),
+    file: null,
+    videoUrl: null,
+    ready: false,
+    tab: 'calib',
+    derived: [],
+    dirty: true,
+    calibSel: { kind: 'point', id: 'farBackL' },
+    calibBusy: false,
+    calibResult: null,
+    pointer: null,          // { u, v, mode, target }
+    hover: null,            // { u, v }
+    draftId: null,          // 正在標記的 set id
+    step: 3,
+    preview: null,          // 預覽中的候選 id
+    selId: null,
+    confirmDel: null,
+    view: { mode: 'behind', all: true, court: true, net: true, labels: true, onVideo: true, team: 'all', az: -90, el: 14, dist: 17 },
+    playUntil: null,
+};
+const DPR = () => Math.min(window.devicePixelRatio || 1, 2);
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const gradeColor = g => (CONFIG.GRADES[g] ? CONFIG.GRADES[g].color : CONFIG.NO_GRADE_COLOR);
+const TEAM_LABEL = { us: '我方', them: '對方' };
+const DIR_LABEL = { to4: '往 4 號位', to2: '往 2 號位' };
+
+// ------------------------------------------------------------
+// 存檔
+// ------------------------------------------------------------
+const storeKey = v => `setter-track:${v.name}:${v.size}`;
+let saveTimer = null;
+function commit(opts) {
+    S.project.updated = Date.now();
+    S.dirty = true;
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(saveLocal, 400);
+    if (!opts || opts.render !== false) render();
+    drawAll();
+}
+function saveLocal() {
+    if (!S.project.video.name) return;
+    try {
+        localStorage.setItem(storeKey(S.project.video), JSON.stringify(S.project));
+        $('#saveState').textContent = '已自動儲存';
+    } catch (e) {
+        $('#saveState').textContent = '沒辦法自動儲存，請記得下載專案檔';
+    }
+}
+function loadLocal(v) {
+    try {
+        const raw = localStorage.getItem(storeKey(v));
+        if (!raw) return null;
+        const r = migrate(JSON.parse(raw));
+        return r.ok ? r.project : null;
+    } catch (e) { return null; }
+}
+function derived() {
+    if (S.dirty) { S.derived = deriveAll(S.project); S.dirty = false; }
+    return S.derived;
+}
+function download(name, obj) {
+    const blob = new Blob([JSON.stringify(obj, null, 1)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+const baseName = () => (S.project.video.name || 'video').replace(/\.[^.]+$/, '');
+
+// ------------------------------------------------------------
+// 提示、確認面板
+// ------------------------------------------------------------
+let toastTimer = null;
+function toast(msg) {
+    const el = $('#toast');
+    el.textContent = msg; el.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { el.hidden = true; }, 3200);
+}
+function openSheet(html, bind) {
+    $('#sheetBox').innerHTML = html;
+    $('#sheet').hidden = false;
+    if (bind) bind($('#sheetBox'));
+}
+function closeSheet() { $('#sheet').hidden = true; $('#sheetBox').innerHTML = ''; }
+function askConfirm(title, body, okLabel, onOk) {
+    openSheet(`<h2>${esc(title)}</h2><p class="hint">${esc(body)}</p>
+        <div class="row" style="justify-content:flex-end"><button data-x="no">取消</button><button class="primary" data-x="yes">${esc(okLabel)}</button></div>`, box => {
+        box.querySelector('[data-x=no]').onclick = closeSheet;
+        box.querySelector('[data-x=yes]').onclick = () => { closeSheet(); onOk(); };
+    });
+}
+$('#sheet').addEventListener('click', e => { if (e.target.id === 'sheet') closeSheet(); });
+
+// ------------------------------------------------------------
+// 影片
+// ------------------------------------------------------------
+function openVideoFile(file) {
+    if (!file) return;
+    if (S.videoUrl) URL.revokeObjectURL(S.videoUrl);
+    S.file = file;
+    S.videoUrl = URL.createObjectURL(file);
+    S.ready = false;
+    video.src = S.videoUrl;
+    video.load();
+}
+video.addEventListener('loadedmetadata', () => {
+    const meta = { name: S.file ? S.file.name : '', size: S.file ? S.file.size : 0, duration: video.duration, w: video.videoWidth, h: video.videoHeight };
+    const saved = loadLocal(meta);
+    const keepPending = S.pendingProject && S.pendingProject.video.name === meta.name ? S.pendingProject : null;
+    if (keepPending) {
+        S.project = keepPending; S.pendingProject = null;
+        toast('已套用剛才開啟的專案檔');
+    } else if (saved) {
+        S.project = saved;
+        toast(`已載入這支影片上次的資料（${saved.sets.length} 顆舉球）`);
+    } else {
+        S.project = newProject();
+    }
+    Object.assign(S.project.video, meta);
+    if (S.project.calib.cam && (S.project.calib.cam.w !== meta.w || S.project.calib.cam.h !== meta.h)) {
+        S.project.calib.cam = null; S.project.calib.rms = null;
+        toast('影片解析度跟上次不同，校正要重新計算');
+    }
+    S.ready = true;
+    S.draftId = null; S.selId = null; S.preview = null;
+    S.calibResult = null;
+    $('#emptyHint').hidden = true;
+    $('#videoName').textContent = meta.name;
+    $('#timeline').max = Math.round(video.duration * 1000);
+    if (S.project.calib.cam == null && Object.keys(S.project.calib.points).length >= 4) recalibrate();
+    commit();
+    layoutStage();
+    seek(0);
+});
+video.addEventListener('error', () => { toast('這個影片格式瀏覽器打不開；可以先轉成 MP4（H.264）再試'); });
+function seek(t) {
+    if (!S.ready) return;
+    video.currentTime = clamp(t, 0, Math.max(0, video.duration - 1e-3));
+}
+function stepFrames(k) {
+    if (!S.ready) return;
+    video.pause();
+    const fps = S.project.video.fps;
+    const n = Math.round(video.currentTime * fps - 0.5) + k;
+    seek(Math.max(0, (n + 0.5) / fps));
+}
+function togglePlay() {
+    if (!S.ready) return;
+    S.playUntil = null;
+    if (video.paused) video.play(); else video.pause();
+}
+function onFrame() {
+    const t = video.currentTime;
+    $('#timeLabel').textContent = `${fmtTime(t)} / ${fmtTime(video.duration)}`;
+    if (document.activeElement !== $('#timeline')) $('#timeline').value = Math.round(t * 1000);
+    if (S.playUntil != null && t >= S.playUntil) { video.pause(); S.playUntil = null; }
+    drawAll();
+}
+['seeked', 'timeupdate', 'pause'].forEach(ev => video.addEventListener(ev, onFrame));
+video.addEventListener('play', () => { $('#btnPlay').textContent = '⏸ 暫停'; frameLoop(); });
+video.addEventListener('pause', () => { $('#btnPlay').textContent = '▶ 播放'; });
+function frameLoop() {
+    if (video.paused || video.ended) return;
+    onFrame();
+    if (video.requestVideoFrameCallback) video.requestVideoFrameCallback(frameLoop);
+    else requestAnimationFrame(frameLoop);
+}
+$('#timeline').addEventListener('input', e => { video.pause(); seek(e.target.value / 1000); });
+document.querySelectorAll('[data-step]').forEach(b => b.onclick = () => stepFrames(+b.dataset.step));
+document.querySelectorAll('[data-seek]').forEach(b => b.onclick = () => { video.pause(); seek(video.currentTime + +b.dataset.seek); });
+document.querySelectorAll('[data-rate]').forEach(b => b.onclick = () => {
+    video.playbackRate = +b.dataset.rate;
+    document.querySelectorAll('[data-rate]').forEach(x => x.classList.toggle('on', x === b));
+});
+$('#btnPlay').onclick = togglePlay;
+
+// ------------------------------------------------------------
+// 版面
+// ------------------------------------------------------------
+function layoutStage() {
+    const stage = $('#stage');
+    const vw = S.project.video.w || 16, vh = S.project.video.h || 9;
+    const narrow = window.innerWidth <= 900;
+    const show3d = S.tab === 'view' && S.ready;
+    view3dBox.hidden = !show3d;
+    const avW = stage.clientWidth;
+    const top = stage.getBoundingClientRect().top + window.scrollY;
+    let avH = narrow ? Math.max(200, window.innerHeight * 0.45) : Math.max(240, window.innerHeight - top - 110);
+    let colW = avW;
+    const side = show3d && avW >= 980;
+    if (show3d && side) colW = (avW - 10) / 2;
+    if (show3d && !side) avH = (avH - 40) * 0.5;
+    if (show3d && side) avH -= 40;
+    const s = Math.min(colW / vw, avH / vh);
+    const bw = Math.floor(vw * s), bh = Math.floor(vh * s);
+    videoBox.style.width = bw + 'px'; videoBox.style.height = bh + 'px';
+    overlay.width = Math.round(bw * DPR()); overlay.height = Math.round(bh * DPR());
+    if (show3d) {
+        view3dBox.style.width = bw + 'px';
+        view3d.style.width = bw + 'px'; view3d.style.height = bh + 'px';
+        view3d.width = Math.round(bw * DPR()); view3d.height = Math.round(bh * DPR());
+    }
+    drawAll();
+}
+window.addEventListener('resize', () => layoutStage());
+
+// ------------------------------------------------------------
+// 繪圖工具
+// ------------------------------------------------------------
+function strokePath(ctx, pts, maxJump) {
+    let started = false, prev = null;
+    ctx.beginPath();
+    for (const q of pts) {
+        if (!q || !Number.isFinite(q[0]) || !Number.isFinite(q[1])) { started = false; prev = null; continue; }
+        if (started && maxJump && Math.hypot(q[0] - prev[0], q[1] - prev[1]) > maxJump) started = false;
+        if (!started) { ctx.moveTo(q[0], q[1]); started = true; } else ctx.lineTo(q[0], q[1]);
+        prev = q;
+    }
+    ctx.stroke();
+}
+function sampleSeg(a, b, n) {
+    const out = [];
+    for (let i = 0; i <= n; i++) out.push([a[0] + (b[0] - a[0]) * i / n, a[1] + (b[1] - a[1]) * i / n, a[2] + (b[2] - a[2]) * i / n]);
+    return out;
+}
+function drawCourt(ctx, proj, lw, opts) {
+    const segs = courtSegments(S.project.settings.netHeight);
+    const jump = opts.maxJump;
+    if (opts.court !== false) {
+        ctx.strokeStyle = opts.courtColor || 'rgba(96,165,250,.95)'; ctx.lineWidth = lw * 2;
+        for (const sg of segs.floor) strokePath(ctx, sampleSeg(sg[0], sg[1], 40).map(proj), jump);
+    }
+    if (opts.net !== false) {
+        ctx.strokeStyle = 'rgba(255,255,255,.95)'; ctx.lineWidth = lw * 2;
+        strokePath(ctx, sampleSeg(segs.net[0][0], segs.net[0][1], 40).map(proj), jump);
+        ctx.strokeStyle = 'rgba(255,255,255,.45)'; ctx.lineWidth = lw;
+        for (const sg of segs.net.slice(1)) strokePath(ctx, sampleSeg(sg[0], sg[1], 20).map(proj), jump);
+        const nb = S.project.settings.netHeight - CONFIG.NET_DEPTH, nt = S.project.settings.netHeight;
+        ctx.strokeStyle = 'rgba(255,255,255,.14)';
+        for (let x = -4; x <= 4; x += 0.5) strokePath(ctx, sampleSeg([x, 0, nb], [x, 0, nt], 6).map(proj), jump);
+        ctx.strokeStyle = 'rgba(203,213,225,.6)'; ctx.lineWidth = lw * 2;
+        for (const sg of segs.posts) strokePath(ctx, sampleSeg(sg[0], sg[1], 10).map(proj), jump);
+        ctx.strokeStyle = '#f87171'; ctx.lineWidth = lw * 3;
+        for (const sg of segs.antennas) strokePath(ctx, sampleSeg(sg[0], sg[1], 10).map(proj), jump);
+    }
+}
+function drawLabel(ctx, text, x, y, lw, color, big) {
+    const fs = (big ? 15 : 12) * lw;
+    ctx.font = `700 ${fs}px ${getComputedStyle(document.body).fontFamily}`;
+    const w = ctx.measureText(text).width + 10 * lw, h = fs + 6 * lw;
+    ctx.fillStyle = 'rgba(10,12,18,.82)';
+    ctx.beginPath();
+    ctx.roundRect ? ctx.roundRect(x - w / 2, y - h - 6 * lw, w, h, 6 * lw) : ctx.rect(x - w / 2, y - h - 6 * lw, w, h);
+    ctx.fill();
+    ctx.fillStyle = color || '#fff';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(text, x, y - h / 2 - 6 * lw);
+}
+function visibleDerived() {
+    const ds = derived();
+    return ds.filter(d => d.metrics && (S.view.team === 'all' || d.metrics.team === S.view.team));
+}
+function setNumber(id) {
+    const i = derived().findIndex(d => d.set.id === id);
+    return i >= 0 ? i + 1 : 0;
+}
+// 一顆舉球的弧線（含地上的影子、起終點、號碼）
+function drawArc(ctx, proj, d, lw, opts) {
+    const fit = d.fit, sel = opts.sel;
+    const pts = sampleArc(fit, fit.tStart, fit.tEnd, 48);
+    const col = opts.color || gradeColor(d.set.grade);
+    ctx.globalAlpha = sel ? 1 : (opts.dim ? 0.35 : 0.6);
+    if (opts.shadow) {
+        ctx.strokeStyle = 'rgba(0,0,0,.35)'; ctx.lineWidth = lw * 2;
+        strokePath(ctx, pts.map(p => proj([p[0], p[1], 0])), opts.maxJump);
+    }
+    ctx.strokeStyle = col; ctx.lineWidth = lw * (sel ? 4 : 2.5);
+    strokePath(ctx, pts.map(proj), opts.maxJump);
+    const a = proj(pts[0]), b = proj(pts[pts.length - 1]);
+    if (a) { ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(a[0], a[1], lw * (sel ? 4 : 3), 0, 7); ctx.fill(); }
+    if (b) { ctx.strokeStyle = col; ctx.lineWidth = lw * 2; ctx.beginPath(); ctx.arc(b[0], b[1], lw * (sel ? 6 : 4), 0, 7); ctx.stroke(); }
+    if (opts.label) {
+        const m = d.metrics, apex = proj(ballAt(fit, m.apexT));
+        if (apex) drawLabel(ctx, String(opts.label), apex[0], apex[1], lw, sel ? '#fff' : col, sel);
+    }
+    ctx.globalAlpha = 1;
+}
+// 目前時間如果在某顆舉球的飛行中，畫出球的位置（跟球）
+function drawBallNow(ctx, proj, lw) {
+    if (!S.ready) return;
+    const k = S.project.video.realPerVideo || 1, t = video.currentTime * k;
+    for (const d of visibleDerived()) {
+        if (t < d.fit.tStart || t > d.fit.tEnd) continue;
+        const q = proj(ballAt(d.fit, t));
+        if (!q) continue;
+        ctx.fillStyle = '#fde047'; ctx.strokeStyle = '#111'; ctx.lineWidth = lw * 1.5;
+        ctx.beginPath(); ctx.arc(q[0], q[1], lw * 6, 0, 7); ctx.fill(); ctx.stroke();
+    }
+}
+
+// ------------------------------------------------------------
+// 影片上的疊圖
+// ------------------------------------------------------------
+function drawAll() { drawOverlay(); if (S.tab === 'view') draw3D(); }
+function drawOverlay() {
+    const ctx = overlay.getContext('2d');
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, overlay.width, overlay.height);
+    if (!S.ready) return;
+    const vw = S.project.video.w, sc = overlay.width / vw;
+    ctx.setTransform(sc, 0, 0, sc, 0, 0);
+    const lw = DPR() / sc; // 1 個 CSS 像素
+    const cam = S.project.calib.cam;
+    const proj = cam ? X => projectPoint(cam, X) : null;
+    const jump = vw * 0.4;
+    if (S.tab === 'calib') drawCalibOverlay(ctx, proj, lw, jump);
+    if (S.tab === 'mark') drawMarkOverlay(ctx, proj, lw, jump);
+    if (S.tab === 'view' && proj && S.view.onVideo) {
+        for (const d of visibleDerived()) {
+            const sel = d.set.id === S.selId;
+            if (!S.view.all && !sel) continue;
+            drawArc(ctx, proj, d, lw, { sel, dim: S.selId && !sel, label: S.view.labels ? setNumber(d.set.id) : null, maxJump: jump });
+        }
+        drawBallNow(ctx, proj, lw);
+    }
+    drawLoupe(ctx, lw);
+}
+function drawCalibOverlay(ctx, proj, lw, jump) {
+    const p = S.project, netH = p.settings.netHeight;
+    if (proj) {
+        ctx.globalAlpha = 0.9;
+        drawCourt(ctx, proj, lw, { maxJump: jump });
+        ctx.globalAlpha = 1;
+    }
+    const lm = landmarkDefs(netH);
+    for (const d of lm) {
+        const q = p.calib.points[d.id];
+        if (!q) continue;
+        const sel = S.calibSel.kind === 'point' && S.calibSel.id === d.id;
+        ctx.strokeStyle = sel ? '#fde047' : '#22d3ee'; ctx.lineWidth = lw * 2;
+        ctx.beginPath(); ctx.arc(q.u, q.v, lw * 7, 0, 7); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(q.u - lw * 11, q.v); ctx.lineTo(q.u + lw * 11, q.v); ctx.moveTo(q.u, q.v - lw * 11); ctx.lineTo(q.u, q.v + lw * 11); ctx.stroke();
+        if (proj) {
+            const r = projectPoint(p.calib.cam, d.X);
+            if (r) { ctx.strokeStyle = '#f472b6'; ctx.lineWidth = lw * 1.5; ctx.beginPath(); ctx.moveTo(q.u, q.v); ctx.lineTo(r[0], r[1]); ctx.stroke(); }
+        }
+        if (sel) drawLabel(ctx, d.label, q.u, q.v - lw * 8, lw, '#fde047');
+    }
+    for (const d of lineDefs(netH)) {
+        const arr = p.calib.lines[d.id] || [];
+        const sel = S.calibSel.kind === 'line' && S.calibSel.id === d.id;
+        ctx.fillStyle = sel ? '#fde047' : '#a78bfa';
+        for (const q of arr) { ctx.beginPath(); ctx.arc(q.u, q.v, lw * (sel ? 5 : 4), 0, 7); ctx.fill(); }
+    }
+}
+function draftSet() { return S.draftId ? S.project.sets.find(s => s.id === S.draftId) : null; }
+function drawMarkOverlay(ctx, proj, lw, jump) {
+    const p = S.project, k = p.video.realPerVideo || 1;
+    const draft = draftSet();
+    const fps = p.video.fps, t = video.currentTime;
+    let marks = null, fit = null, color = '#fde047';
+    if (draft) { marks = draft.marks; fit = proj ? deriveSet(p, draft).fit : null; }
+    else if (S.preview) {
+        const c = candidates().list.find(x => x.key === S.preview);
+        if (c) { marks = c.points; fit = c.fit; color = '#a78bfa'; }
+    }
+    if (!marks) return;
+    if (fit) {
+        ctx.strokeStyle = color; ctx.lineWidth = lw * 2; ctx.globalAlpha = 0.85;
+        strokePath(ctx, sampleArc(fit, fit.tStart, fit.tEnd, 60).map(proj), jump);
+        ctx.globalAlpha = 1;
+        const tt = t * k;
+        if (tt >= fit.tStart - 0.5 && tt <= fit.tEnd + 0.5) {
+            const q = proj(ballAt(fit, tt));
+            if (q) { ctx.strokeStyle = '#fff'; ctx.setLineDash([4 * lw, 4 * lw]); ctx.lineWidth = lw * 1.5; ctx.beginPath(); ctx.arc(q[0], q[1], lw * 12, 0, 7); ctx.stroke(); ctx.setLineDash([]); }
+        }
+    }
+    marks.forEach((m, i) => {
+        const now = Math.abs(m.t - t) < 0.5 / fps;
+        const bad = fit && fit.inliers && fit.inliers[i] === false;
+        ctx.fillStyle = bad ? '#ef4444' : (now ? '#fff' : color);
+        ctx.beginPath(); ctx.arc(m.u, m.v, lw * (now ? 5 : 3.5), 0, 7); ctx.fill();
+        if (now) { ctx.strokeStyle = '#111'; ctx.lineWidth = lw; ctx.stroke(); }
+    });
+}
+function drawLoupe(ctx, lw) {
+    const h = S.pointer || S.hover;
+    if (!h || !(S.tab === 'calib' || (S.tab === 'mark' && S.draftId))) return;
+    const Lsz = 150 * lw, zoom = 4, src = Lsz / zoom;
+    const vw = S.project.video.w;
+    const left = h.u > vw / 2 ? 10 * lw : vw - Lsz - 10 * lw;
+    const top = 10 * lw;
+    ctx.save();
+    ctx.beginPath(); ctx.rect(left, top, Lsz, Lsz); ctx.clip();
+    try { ctx.drawImage(video, h.u - src / 2, h.v - src / 2, src, src, left, top, Lsz, Lsz); } catch (e) { /* 影片還沒有畫面 */ }
+    ctx.restore();
+    ctx.strokeStyle = '#fde047'; ctx.lineWidth = lw * 2; ctx.strokeRect(left, top, Lsz, Lsz);
+    ctx.lineWidth = lw;
+    ctx.beginPath();
+    ctx.moveTo(left + Lsz / 2, top + Lsz / 2 - 12 * lw); ctx.lineTo(left + Lsz / 2, top + Lsz / 2 + 12 * lw);
+    ctx.moveTo(left + Lsz / 2 - 12 * lw, top + Lsz / 2); ctx.lineTo(left + Lsz / 2 + 12 * lw, top + Lsz / 2);
+    ctx.stroke();
+}
+
+// ------------------------------------------------------------
+// 在影片上點擊
+// ------------------------------------------------------------
+function eventToVideo(e) {
+    const r = overlay.getBoundingClientRect();
+    return { u: (e.clientX - r.left) / r.width * S.project.video.w, v: (e.clientY - r.top) / r.height * S.project.video.h };
+}
+// 只拖動「目前這一類」的點：選點時拖已知點，選線時只拖這條線的點（遠端的點常擠在一起，避免誤拖）
+function hitCalibPoint(u, v) {
+    const tol = 12 * S.project.video.w / overlay.getBoundingClientRect().width;
+    const sel = S.calibSel;
+    let best = null;
+    const consider = (target, q) => { const d = Math.hypot(q.u - u, q.v - v); if (d < tol && (!best || d < best.d)) best = { target, d }; };
+    if (sel.kind === 'point') for (const [id, q] of Object.entries(S.project.calib.points)) consider({ kind: 'point', id }, q);
+    else (S.project.calib.lines[sel.id] || []).forEach((q, i) => consider({ kind: 'line', id: sel.id, i }, q));
+    return best ? best.target : null;
+}
+overlay.addEventListener('pointerdown', e => {
+    if (!S.ready) return;
+    e.preventDefault();
+    overlay.setPointerCapture(e.pointerId);
+    const pt = eventToVideo(e);
+    let mode = 'place', target = null;
+    if (S.tab === 'calib') {
+        const hit = hitCalibPoint(pt.u, pt.v);
+        if (hit) { mode = 'drag'; target = hit; S.calibSel = { kind: hit.kind, id: hit.id }; }
+    } else if (S.tab === 'mark') {
+        if (!S.draftId) { S.pointer = null; return; }
+    } else return;
+    S.pointer = Object.assign(pt, { mode, target });
+    video.pause();
+    drawOverlay();
+});
+overlay.addEventListener('pointermove', e => {
+    if (!S.ready) return;
+    const pt = eventToVideo(e);
+    if (S.pointer) {
+        S.pointer.u = pt.u; S.pointer.v = pt.v;
+        if (S.pointer.mode === 'drag') moveCalibTarget(S.pointer.target, pt);
+    } else if (e.pointerType === 'mouse') S.hover = pt;
+    drawOverlay();
+});
+overlay.addEventListener('pointerleave', () => { S.hover = null; drawOverlay(); });
+overlay.addEventListener('pointerup', e => {
+    const P = S.pointer;
+    S.pointer = null;
+    if (!P) return;
+    const pt = { u: clamp(P.u, 0, S.project.video.w), v: clamp(P.v, 0, S.project.video.h) };
+    if (S.tab === 'calib') {
+        if (P.mode === 'drag') { moveCalibTarget(P.target, pt); recalibrate(); render(); }
+        else placeCalib(pt);
+    } else if (S.tab === 'mark') addMark(pt);
+    drawOverlay();
+});
+overlay.addEventListener('pointercancel', () => { S.pointer = null; drawOverlay(); });
+
+// ------------------------------------------------------------
+// ① 場地校正
+// ------------------------------------------------------------
+function moveCalibTarget(target, pt) {
+    const c = S.project.calib;
+    if (target.kind === 'point') c.points[target.id] = { u: pt.u, v: pt.v };
+    else if (c.lines[target.id] && c.lines[target.id][target.i]) c.lines[target.id][target.i] = { u: pt.u, v: pt.v };
+}
+function placeCalib(pt) {
+    const c = S.project.calib, sel = S.calibSel;
+    if (sel.kind === 'point') {
+        c.points[sel.id] = { u: pt.u, v: pt.v };
+        const order = landmarkDefs(S.project.settings.netHeight).map(d => d.id);
+        const next = order.slice(order.indexOf(sel.id) + 1).concat(order).find(id => !c.points[id]);
+        if (next) S.calibSel = { kind: 'point', id: next };
+    } else {
+        (c.lines[sel.id] = c.lines[sel.id] || []).push({ u: pt.u, v: pt.v });
+    }
+    recalibrate();
+    commit();
+}
+let calibTimer = null;
+function recalibrate() {
+    clearTimeout(calibTimer);
+    calibTimer = setTimeout(() => {
+        const input = calibInputFromProject(S.project);
+        const floor = input.points.filter(p => p.X[2] === 0).length;
+        if (floor < 4) {
+            S.project.calib.cam = null; S.project.calib.rms = null;
+            S.calibResult = { ok: false, msg: `還要 ${4 - floor} 個地板上的點才算得出來` };
+        } else {
+            const r = calibrate(input);
+            S.calibResult = r;
+            if (r.ok) { S.project.calib.cam = r.cam; S.project.calib.rms = r.rms; }
+            else { S.project.calib.cam = null; S.project.calib.rms = null; }
+        }
+        commit();
+    }, 30);
+}
+function courtSvg() {
+    const p = S.project, sc = 12, pad = 40, W = 9 * sc, L = 18 * sc;
+    const X = x => pad + (x + 4.5) * sc, Y = y => pad + (9 - y) * sc; // 遠端在上、近端在下
+    const sel = S.calibSel;
+    const lineEl = (id, x1, y1, x2, y2) => {
+        const on = sel.kind === 'line' && sel.id === id, n = (p.calib.lines[id] || []).length;
+        return `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${on ? '#fde047' : (n ? '#a78bfa' : '#60a5fa')}" stroke-width="${on ? 4 : 2}"/>
+            <line class="hit" data-line="${id}" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="transparent" stroke-width="14"/>`;
+    };
+    const ptEl = (d, cx, cy) => {
+        const on = sel.kind === 'point' && sel.id === d.id, has = !!p.calib.points[d.id];
+        return `<circle class="hit" data-point="${d.id}" cx="${cx}" cy="${cy}" r="${on ? 8 : 6}" fill="${has ? '#22d3ee' : '#1f2430'}" stroke="${on ? '#fde047' : '#9aa3b2'}" stroke-width="${on ? 3 : 1.5}"/>`;
+    };
+    const lm = Object.fromEntries(landmarkDefs(p.settings.netHeight).map(d => [d.id, d]));
+    let s = `<svg class="court-svg" viewBox="0 0 ${W + pad * 2} ${L + pad * 2}" role="img" aria-label="球場示意圖">`;
+    s += `<rect x="${X(-4.5)}" y="${Y(9)}" width="${W}" height="${L}" fill="#3b2f22" opacity=".55"/>`;
+    s += `<text x="${X(0)}" y="${Y(9) - 10}" fill="#9aa3b2" font-size="11" text-anchor="middle">遠端</text>`;
+    s += `<text x="${X(0)}" y="${Y(-9) + 22}" fill="#9aa3b2" font-size="11" text-anchor="middle">近端（靠攝影機）</text>`;
+    s += `<text x="${X(-4.5) - 8}" y="${Y(-9) + 22}" fill="#9aa3b2" font-size="11" text-anchor="middle">左</text>`;
+    s += `<text x="${X(4.5) + 8}" y="${Y(-9) + 22}" fill="#9aa3b2" font-size="11" text-anchor="middle">右</text>`;
+    s += lineEl('farBack', X(-4.5), Y(9), X(4.5), Y(9));
+    s += lineEl('nearBack', X(-4.5), Y(-9), X(4.5), Y(-9));
+    s += lineEl('sideL', X(-4.5), Y(9), X(-4.5), Y(-9));
+    s += lineEl('sideR', X(4.5), Y(9), X(4.5), Y(-9));
+    s += lineEl('farAtk', X(-4.5), Y(3), X(4.5), Y(3));
+    s += lineEl('nearAtk', X(-4.5), Y(-3), X(4.5), Y(-3));
+    s += lineEl('mid', X(-4.5), Y(0), X(4.5), Y(0));
+    for (const id of ['nearBackL', 'nearBackR', 'nearAtkL', 'nearAtkR', 'midL', 'midR', 'farAtkL', 'farAtkR', 'farBackL', 'farBackR']) {
+        const d = lm[id]; s += ptEl(d, X(d.X[0]), Y(d.X[1]));
+    }
+    s += `</svg>`;
+    return s;
+}
+function renderCalib() {
+    const p = S.project, netH = p.settings.netHeight;
+    const lm = landmarkDefs(netH), ld = lineDefs(netH);
+    const sel = S.calibSel;
+    const chip = (kind, d) => {
+        const on = sel.kind === kind && sel.id === d.id;
+        const n = kind === 'point' ? (p.calib.points[d.id] ? 1 : 0) : (p.calib.lines[d.id] || []).length;
+        const mark = kind === 'point' ? (n ? '<span class="ck">✓</span>' : '') : (n ? `<span class="ck">${n}</span>` : '');
+        return `<button class="chip ${on ? 'on' : ''}" data-sel="${kind}:${d.id}">${esc(d.label)}${mark}</button>`;
+    };
+    const floorIds = lm.filter(d => d.X[2] === 0);
+    const netIds = lm.filter(d => d.X[2] > 0);
+    const r = S.calibResult;
+    let res = '';
+    if (p.calib.cam) {
+        const rms = p.calib.rms, C = camCenter(p.calib.cam);
+        const q = rms < 1.5 ? '很好' : rms < 3 ? '可以' : rms < 6 ? '普通，檢查有沒有點偏' : '偏差很大，可能有點點錯（左右、近遠端）';
+        const worst = r && r.ok ? r.perPoint.concat(r.perLine).filter(e => e.err > Math.max(3, rms * 2)).sort((a, b) => b.err - a.err).slice(0, 3) : [];
+        const lmName = id => (lm.find(d => d.id === id) || ld.find(d => d.id === id) || { label: id }).label;
+        res = `<div class="card"><div><b>平均誤差 <span class="num">${rms.toFixed(2)}</span> px</b>（${q}）</div>
+            <dl class="kv">
+                <dt>攝影機位置</dt><dd>x ${C[0].toFixed(1)}、y ${C[1].toFixed(1)}、高 ${C[2].toFixed(2)} m</dd>
+                <dt>焦距</dt><dd>${p.calib.cam.f.toFixed(0)} px（畫面寬 ${p.video.w}）</dd>
+                ${p.settings.wide ? `<dt>廣角變形</dt><dd>k1 ${p.calib.cam.k1.toFixed(3)}、k2 ${p.calib.cam.k2.toFixed(3)}</dd>` : ''}
+            </dl>
+            ${worst.length ? `<p class="hint">誤差比較大的：${worst.map(e => `${esc(lmName(e.id))} ${e.err.toFixed(1)} px`).join('、')}</p>` : ''}
+            ${r && r.ok && !r.hasHeight ? '<div class="warn">只有地板上的點：高度會比較不準。建議再點網子上緣或標誌桿。</div>' : ''}
+            <p class="hint">藍線＝依計算結果畫回去的球場，應該貼齊影片裡的線；粉紅短線＝點的位置與計算位置的差距。</p></div>`;
+    } else if (r && !r.ok) res = `<div class="warn">${esc(r.msg)}</div>`;
+    const selDef = sel.kind === 'point' ? lm.find(d => d.id === sel.id) : ld.find(d => d.id === sel.id);
+    const selInfo = selDef ? (sel.kind === 'point'
+        ? `現在要點：<b>${esc(selDef.label)}</b>${p.calib.points[sel.id] ? '（已點，可以直接在影片上重點或拖動）' : ''}`
+        : `現在要點：<b>${esc(selDef.label)}</b> 上的任意位置（可以點很多點，越分散越好）`) : '';
+    return `
+        <p class="hint">選一個點或一條線，在影片上點它的位置（按住可以微調，放開才確定）。<b>左右以「站在近端場地、面向球網」為準</b>，不是畫面的左右。</p>
+        <label class="row"><input type="checkbox" id="chkWide" ${p.settings.wide ? 'checked' : ''}> 廣角鏡頭（0.5x／0.7x 拍的要勾）</label>
+        ${courtSvg()}
+        <div class="card"><div>${selInfo}</div>
+            <div class="row">
+                ${sel.kind === 'point' && p.calib.points[sel.id] ? '<button class="small danger" data-act="delPoint">刪掉這個點</button>' : ''}
+                ${sel.kind === 'line' && (p.calib.lines[sel.id] || []).length ? '<button class="small" data-act="undoLinePt">復原一點</button><button class="small danger" data-act="clearLine">清掉這條線的點</button>' : ''}
+            </div></div>
+        <div><h3>地板上的點（至少 4 個）</h3><div class="chips">${floorIds.map(d => chip('point', d)).join('')}</div></div>
+        <div><h3>網子與標誌桿（讓高度更準）</h3><div class="chips">${netIds.map(d => chip('point', d)).join('')}${ld.filter(d => d.id === 'netTop' || d.id === 'antL' || d.id === 'antR').map(d => chip('line', d)).join('')}</div></div>
+        <div><h3>直線上的點（廣角時多點幾點，尤其畫面邊緣）</h3><div class="chips">${ld.filter(d => !['netTop', 'antL', 'antR'].includes(d.id)).map(d => chip('line', d)).join('')}</div></div>
+        ${res}`;
+}
+function bindCalib(root) {
+    root.querySelectorAll('[data-sel]').forEach(b => b.onclick = () => {
+        const [kind, id] = b.dataset.sel.split(':');
+        S.calibSel = { kind, id }; render(); drawOverlay();
+    });
+    root.querySelectorAll('[data-point]').forEach(el => el.addEventListener('click', () => { S.calibSel = { kind: 'point', id: el.dataset.point }; render(); drawOverlay(); }));
+    root.querySelectorAll('[data-line]').forEach(el => el.addEventListener('click', () => { S.calibSel = { kind: 'line', id: el.dataset.line }; render(); drawOverlay(); }));
+    const wide = root.querySelector('#chkWide');
+    if (wide) wide.onchange = () => { S.project.settings.wide = wide.checked; recalibrate(); commit(); };
+    const act = root.querySelector('[data-act=delPoint]');
+    if (act) act.onclick = () => { delete S.project.calib.points[S.calibSel.id]; recalibrate(); commit(); };
+    const undo = root.querySelector('[data-act=undoLinePt]');
+    if (undo) undo.onclick = () => { S.project.calib.lines[S.calibSel.id].pop(); recalibrate(); commit(); };
+    const clr = root.querySelector('[data-act=clearLine]');
+    if (clr) clr.onclick = () => { delete S.project.calib.lines[S.calibSel.id]; recalibrate(); commit(); };
+}
+
+// ------------------------------------------------------------
+// ② 標記舉球
+// ------------------------------------------------------------
+function startDraft() {
+    const s = newSet('manual');
+    S.project.sets.push(s);
+    S.draftId = s.id; S.preview = null;
+    commit();
+}
+function addMark(pt) {
+    const s = draftSet();
+    if (!s) return;
+    const t = video.currentTime, fps = S.project.video.fps;
+    const same = s.marks.findIndex(m => Math.abs(m.t - t) < 0.5 / fps);
+    if (same >= 0) s.marks[same] = { t, u: pt.u, v: pt.v };
+    else s.marks.push({ t, u: pt.u, v: pt.v });
+    s.marks.sort((a, b) => a.t - b.t);
+    commit();
+    if (same < 0) stepFrames(S.step);
+}
+function undoMark() {
+    const s = draftSet();
+    if (!s || !s.marks.length) return;
+    const last = s.marks.pop();
+    commit();
+    seek(last.t);
+}
+function finishDraft() {
+    const s = draftSet();
+    if (!s) return;
+    if (s.marks.length < CONFIG.MIN_MARKS) { toast(`至少要 ${CONFIG.MIN_MARKS} 點才算得出軌跡（現在 ${s.marks.length} 點）`); return; }
+    delete s._editing;
+    S.draftId = null; S.selId = s.id;
+    commit();
+    toast(`已存成第 ${setNumber(s.id)} 顆`);
+}
+function cancelDraft() {
+    const s = draftSet();
+    if (!s) return;
+    const fresh = !s._editing;
+    if (fresh) S.project.sets = S.project.sets.filter(x => x.id !== s.id);
+    else delete s._editing;
+    S.draftId = null;
+    commit();
+}
+function liveSummary(d) {
+    if (!d.fit) return '';
+    const m = d.metrics;
+    return `<dl class="kv">
+        <dt>擬合誤差</dt><dd>${d.fit.rms.toFixed(1)} px${d.fit.inliers.some(x => !x) ? `（${d.fit.inliers.filter(x => !x).length} 點不合，紅色）` : ''}</dd>
+        <dt>目標區</dt><dd>${esc(m.target)}・${DIR_LABEL[m.dir]}・${TEAM_LABEL[m.team]}</dd>
+        <dt>最高點</dt><dd>${m.apexZ.toFixed(2)} m（高出網子 ${m.aboveNet >= 0 ? '+' : ''}${m.aboveNet.toFixed(2)}）</dd>
+        <dt>飛行時間</dt><dd>${m.flight.toFixed(2)} 秒</dd>
+        <dt>終點離網</dt><dd>${m.distNet.toFixed(2)} m</dd></dl>`;
+}
+function renderMark() {
+    const p = S.project, draft = draftSet();
+    let h = '';
+    if (!p.calib.cam) h += '<div class="warn">還沒完成場地校正：可以先標記，但要校正後才算得出 3D 軌跡。</div>';
+    h += `<div class="row"><span>每點一下前進</span>${[1, 2, 3, 5].map(n => `<button class="small ${S.step === n ? 'on' : ''}" data-stepn="${n}">${n} 格</button>`).join('')}</div>`;
+    if (draft) {
+        const d = deriveSet(p, draft);
+        h += `<div class="card"><div><b>${draft._editing ? `編輯第 ${setNumber(draft.id)} 顆` : '新的一顆舉球'}</b>：已點 ${draft.marks.length} 點</div>
+            <p class="hint">從舉球員手離開後的第一格開始，點<b>球的中心</b>，一直點到攻擊手碰到球之前。點錯了就在同一格重點一次。<br>
+            <kbd>Enter</kbd> 完成、<kbd>Backspace</kbd> 復原、<kbd>←</kbd><kbd>→</kbd> 一格</p>
+            ${liveSummary(d)}
+            <div class="row"><button data-act="undoMark" ${draft.marks.length ? '' : 'disabled'}>復原一點</button>
+            <button class="primary" data-act="finish">完成</button><button data-act="cancel">${draft._editing ? '結束編輯' : '取消'}</button></div></div>`;
+    } else {
+        h += `<button class="primary" data-act="newSet" ${S.ready ? '' : 'disabled'}>＋ 新增一顆舉球</button>`;
+    }
+    const ds = derived();
+    if (ds.length) {
+        h += `<div><h3>已標記 ${ds.length} 顆</h3></div><div class="list">`;
+        ds.forEach((d, i) => {
+            const m = d.metrics;
+            const del = S.confirmDel === d.set.id;
+            h += `<div class="item ${d.set.id === S.draftId ? 'sel' : ''}"><div class="head"><span class="no">#${i + 1}</span><span class="num">${fmtTime(d.tVideo)}</span>
+                <span class="muted">${d.set.marks.length} 點</span>${m ? `<span class="tag ${m.team}">${TEAM_LABEL[m.team]}</span><span>${esc(m.target)}</span>` : '<span class="muted">（還沒有軌跡）</span>'}
+                ${d.set.src === 'auto' ? '<span class="tag">自動</span>' : ''}</div>
+                <div class="row">${del ? `<span>確定刪除？</span><button class="small danger" data-del-yes="${d.set.id}">刪除</button><button class="small" data-del-no>取消</button>`
+                    : `<button class="small" data-goto="${d.set.id}">跳到這顆</button><button class="small" data-edit="${d.set.id}" ${S.draftId ? 'disabled' : ''}>編輯</button><button class="small danger" data-del="${d.set.id}">刪除</button>`}</div></div>`;
+        });
+        h += '</div>';
+    }
+    if (p.candidates.length) {
+        const cd = candidates();
+        h += '<div><h3>自動偵測</h3></div>';
+        if (!cd.ready) h += `<div class="warn">匯入了 ${p.candidates.length} 條自動偵測的軌跡；完成場地校正後才能切段、找出哪些是舉球。</div>`;
+        else {
+            const likes = cd.list.filter(c => c.like.ok), others = cd.list.length - likes.length;
+            h += `<p class="hint">${p.candidates.length} 條軌跡切成 ${cd.list.length} 段：像舉球 ${likes.length} 段。已經加入或略過的不會再列出。</p>`;
+            if (likes.length) h += `<button data-act="acceptAll">全部加入像舉球的（${likes.length}）</button>`;
+            h += '<div class="list">';
+            for (const c of S.showAllCands ? cd.list : likes) {
+                const m = c.metrics;
+                h += `<div class="item ${S.preview === c.key ? 'sel' : ''}"><div class="head"><span class="num">${fmtTime(c.tVideo)}</span><span class="muted">${c.points.length} 點</span>
+                    ${c.like.ok ? `<span class="tag ${m.team}">${TEAM_LABEL[m.team]}</span><span>${esc(m.target)}・最高 ${m.apexZ.toFixed(1)} m・${m.flight.toFixed(2)} s</span>` : `<span class="muted">不像舉球：${esc(c.like.why.join('、'))}</span>`}</div>
+                    <div class="row"><button class="small" data-cand-view="${esc(c.key)}">看</button><button class="small" data-cand-ok="${esc(c.key)}">加入</button><button class="small" data-cand-no="${esc(c.key)}">略過</button></div></div>`;
+            }
+            h += '</div>';
+            if (others) h += `<button class="small" data-act="toggleCands">${S.showAllCands ? '只看像舉球的' : `也顯示不像舉球的（${others}）`}</button>`;
+        }
+        h += '<button class="small danger" data-act="clearCands">清掉偵測結果</button>';
+    }
+    return h;
+}
+let candCache = { key: null, val: null };
+function candidates() {
+    const p = S.project, cam = p.calib.cam;
+    const key = [cam ? [cam.f, cam.k1, cam.k2].concat(cam.t, cam.R).join(',') : 'none', p.video.realPerVideo, p.video.w, p.settings.netHeight, p.settings.ourSide,
+        p.candidates.length, p.candidates.reduce((n, c) => n + c.dismissed.length, 0), p.sets.map(x => x.id + ':' + x.marks.length).join('|')].join('#');
+    if (candCache.key !== key) candCache = { key, val: deriveCandidates(p) };
+    return candCache.val;
+}
+function acceptCandidate(c) {
+    const s = newSet('auto');
+    s.marks = c.points.map(m => ({ t: m.t, u: m.u, v: m.v }));
+    S.project.sets.push(s);
+    if (S.preview === c.key) S.preview = null;
+}
+function bindMark(root) {
+    root.querySelectorAll('[data-stepn]').forEach(b => b.onclick = () => { S.step = +b.dataset.stepn; render(); });
+    const on = (sel, fn) => { const el = root.querySelector(sel); if (el) el.onclick = fn; };
+    on('[data-act=newSet]', startDraft);
+    on('[data-act=undoMark]', undoMark);
+    on('[data-act=finish]', finishDraft);
+    on('[data-act=cancel]', cancelDraft);
+    on('[data-act=acceptAll]', () => {
+        const likes = candidates().list.filter(c => c.like.ok);
+        likes.forEach(acceptCandidate);
+        commit();
+        toast(`加入 ${likes.length} 顆舉球`);
+    });
+    on('[data-act=toggleCands]', () => { S.showAllCands = !S.showAllCands; render(); });
+    on('[data-act=clearCands]', () => askConfirm('清掉偵測結果', '匯入的自動偵測軌跡會刪掉（已經加入的舉球不受影響）。', '清掉', () => {
+        S.project.candidates = []; S.preview = null; commit();
+    }));
+    root.querySelectorAll('[data-goto]').forEach(b => b.onclick = () => { const d = derived().find(x => x.set.id === b.dataset.goto); if (d) { video.pause(); seek(d.tVideo); } });
+    root.querySelectorAll('[data-edit]').forEach(b => b.onclick = () => {
+        const s = S.project.sets.find(x => x.id === b.dataset.edit);
+        if (!s) return;
+        Object.defineProperty(s, '_editing', { value: true, enumerable: false, configurable: true });
+        S.draftId = s.id; S.preview = null;
+        video.pause(); seek(s.marks.length ? s.marks[s.marks.length - 1].t : video.currentTime);
+        commit();
+    });
+    root.querySelectorAll('[data-del]').forEach(b => b.onclick = () => { S.confirmDel = b.dataset.del; render(); });
+    root.querySelectorAll('[data-del-no]').forEach(b => b.onclick = () => { S.confirmDel = null; render(); });
+    root.querySelectorAll('[data-del-yes]').forEach(b => b.onclick = () => {
+        const id = b.dataset.delYes;
+        S.project.sets = S.project.sets.filter(x => x.id !== id);
+        if (S.draftId === id) S.draftId = null;
+        if (S.selId === id) S.selId = null;
+        S.confirmDel = null;
+        commit();
+    });
+    const findCand = key => candidates().list.find(c => c.key === key);
+    root.querySelectorAll('[data-cand-view]').forEach(b => b.onclick = () => { const c = findCand(b.dataset.candView); if (!c) return; S.preview = c.key; video.pause(); seek(c.tVideo); render(); drawOverlay(); });
+    root.querySelectorAll('[data-cand-ok]').forEach(b => b.onclick = () => { const c = findCand(b.dataset.candOk); if (c) { acceptCandidate(c); commit(); } });
+    root.querySelectorAll('[data-cand-no]').forEach(b => b.onclick = () => {
+        const c = findCand(b.dataset.candNo);
+        if (!c) return;
+        c.cand.dismissed.push([c.tVideo, c.tVideoEnd]);
+        if (S.preview === c.key) S.preview = null;
+        commit();
+    });
+}
+
+// ------------------------------------------------------------
+// ③ 檢視：3D 視圖
+// ------------------------------------------------------------
+function makeView(mode, W, H) {
+    if (mode === 'video' && S.project.calib.cam) {
+        const cam = S.project.calib.cam, s = W / cam.w;
+        return { proj: X => { const q = projectPoint(cam, X); return q ? [q[0] * s, q[1] * s] : null; }, persp: true, bgVideo: true, scale: s };
+    }
+    if (mode === 'side') { // 從右邊線看：橫軸 = 離網距離，近端在左
+        const s = Math.min(W / 13, H / 7.2);
+        return { proj: X => [W / 2 + X[1] * s, H - 0.08 * H - X[2] * s], persp: false, ortho: 'side' };
+    }
+    if (mode === 'front') { // 從近端底線後面看：橫軸 = 沿著球網的位置
+        const s = Math.min(W / 11.5, H / 7.2);
+        return { proj: X => [W / 2 + X[0] * s, H - 0.08 * H - X[2] * s], persp: false, ortho: 'front' };
+    }
+    if (mode === 'top') {
+        const s = Math.min(W / 21, H / 11);
+        return { proj: X => [W / 2 + X[1] * s, H / 2 + X[0] * s], persp: false };
+    }
+    const v = S.view, az = v.az * Math.PI / 180, el = v.el * Math.PI / 180;
+    const target = [0, -1, 2.2];
+    const C = [target[0] + v.dist * Math.cos(el) * Math.cos(az), target[1] + v.dist * Math.cos(el) * Math.sin(az), target[2] + v.dist * Math.sin(el)];
+    const cam = lookAtCamera(C, target, 1.05 * W, W, H);
+    return { proj: X => projectPoint(cam, X), persp: true };
+}
+function draw3D() {
+    if (view3dBox.hidden) return;
+    const ctx = view3d.getContext('2d');
+    const W = view3d.width, H = view3d.height;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.fillStyle = '#0b0e14'; ctx.fillRect(0, 0, W, H);
+    const mode = S.view.mode === 'video' && !S.project.calib.cam ? 'behind' : S.view.mode;
+    const vw = makeView(mode, W, H), proj = vw.proj, lw = DPR();
+    if (vw.bgVideo && S.ready) { try { ctx.globalAlpha = 0.55; ctx.drawImage(video, 0, 0, W, H); ctx.globalAlpha = 1; } catch (e) { /* 沒畫面 */ } }
+    if (!vw.bgVideo) {
+        const c = [[-4.5, -9, 0], [4.5, -9, 0], [4.5, 9, 0], [-4.5, 9, 0]].map(proj);
+        if (c.every(Boolean) && !vw.ortho) {
+            ctx.fillStyle = 'rgba(201,161,107,.28)';
+            ctx.beginPath(); c.forEach((q, i) => (i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1]))); ctx.closePath(); ctx.fill();
+        }
+        if (vw.ortho) drawOrthoGuides(ctx, proj, lw, vw.ortho, W);
+    }
+    drawCourt(ctx, proj, lw, { court: S.view.court && !vw.ortho, net: S.view.net, maxJump: W * 0.6 });
+    const ds = visibleDerived();
+    const sorted = ds.filter(d => d.set.id !== S.selId).concat(ds.filter(d => d.set.id === S.selId));
+    for (const d of sorted) {
+        const sel = d.set.id === S.selId;
+        if (!S.view.all && !sel) continue;
+        drawArc(ctx, proj, d, lw, { sel, dim: S.selId && !sel, shadow: vw.persp && !vw.bgVideo, label: S.view.labels ? setNumber(d.set.id) : null, maxJump: W * 0.6 });
+    }
+    drawBallNow(ctx, proj, lw);
+    if (!ds.length) {
+        ctx.fillStyle = '#9aa3b2'; ctx.textAlign = 'center'; ctx.font = `${14 * lw}px ${getComputedStyle(document.body).fontFamily}`;
+        ctx.fillText(S.project.calib.cam ? '還沒有舉球軌跡：到「② 標記舉球」新增' : '先完成「① 場地校正」', W / 2, H / 2);
+    }
+}
+// 正面／側面的刻度：每 1 m 一條高度線、地板、進攻線或分區線
+function drawOrthoGuides(ctx, proj, lw, kind, W) {
+    const font = `${12 * lw}px ${getComputedStyle(document.body).fontFamily}`;
+    ctx.font = font; ctx.fillStyle = '#9aa3b2'; ctx.textBaseline = 'middle';
+    const ax = kind === 'side' ? 1 : 0, lo = kind === 'side' ? -6.2 : -5.6, hi = -lo;
+    const P = (h, z) => { const X = [0, 0, z]; X[ax] = h; return proj(X); };
+    ctx.strokeStyle = 'rgba(255,255,255,.08)'; ctx.lineWidth = lw;
+    for (let z = 1; z <= 6; z++) {
+        strokePath(ctx, [P(lo, z), P(hi, z)]);
+        const q = P(lo, z); ctx.textAlign = 'left'; ctx.fillText(`${z} m`, q[0] + 2 * lw, q[1] - 7 * lw);
+    }
+    ctx.strokeStyle = 'rgba(201,161,107,.7)'; ctx.lineWidth = lw * 2;
+    strokePath(ctx, [P(lo, 0), P(hi, 0)]);
+    ctx.textAlign = 'center';
+    const tick = (h, label, dashed) => {
+        const a = P(h, 0), b = P(h, dashed ? 6 : 0.25);
+        ctx.strokeStyle = dashed ? 'rgba(255,255,255,.18)' : 'rgba(201,161,107,.9)'; ctx.lineWidth = lw * (dashed ? 1 : 2);
+        if (dashed) ctx.setLineDash([5 * lw, 5 * lw]);
+        strokePath(ctx, [a, b]); ctx.setLineDash([]);
+        if (label) { ctx.fillStyle = '#9aa3b2'; ctx.fillText(label, a[0], a[1] + 12 * lw); }
+    };
+    if (kind === 'side') {
+        tick(-3, '近端進攻線'); tick(3, '遠端進攻線'); tick(0, '');
+        const a = P(-5.6, 0); ctx.textAlign = 'left'; ctx.fillText('← 近端', a[0], a[1] + 12 * lw);
+        const b = P(5.6, 0); ctx.textAlign = 'right'; ctx.fillText('遠端 →', b[0], b[1] + 12 * lw);
+    } else {
+        tick(-4.5, '左邊線'); tick(4.5, '右邊線');
+        tick(-CONFIG.ZONE_SPLIT, '', true); tick(CONFIG.ZONE_SPLIT, '', true);
+        ctx.fillStyle = '#6b7385';
+        for (const [h, t] of [[-3, '左'], [0, '中'], [3, '右']]) { const q = P(h, 0); ctx.fillText(t, q[0], q[1] + 12 * lw); }
+    }
+}
+function renderView3dTools() {
+    const v = S.view;
+    const b = (k, label, on) => `<button class="small ${on ? 'on' : ''}" data-v="${k}">${label}</button>`;
+    $('#view3dTools').innerHTML =
+        b('mode:behind', '底線後', v.mode === 'behind') + b('mode:front', '正面', v.mode === 'front') + b('mode:side', '側面', v.mode === 'side') +
+        b('mode:top', '俯視', v.mode === 'top') + b('mode:video', '影片視角', v.mode === 'video') +
+        `<span style="flex:1"></span>` + b('all', v.all ? '全部軌跡' : '只看選取', v.all) + b('labels', '號碼', v.labels) + b('court', '場線', v.court) + b('net', '球網', v.net);
+    $('#view3dTools').querySelectorAll('[data-v]').forEach(btn => btn.onclick = () => {
+        const k = btn.dataset.v;
+        if (k.startsWith('mode:')) v.mode = k.slice(5); else v[k] = !v[k];
+        renderView3dTools(); draw3D();
+    });
+}
+(function bind3dOrbit() {
+    let drag = null;
+    view3d.addEventListener('pointerdown', e => { if (S.view.mode !== 'behind') return; drag = { x: e.clientX, y: e.clientY, az: S.view.az, el: S.view.el }; view3d.setPointerCapture(e.pointerId); });
+    view3d.addEventListener('pointermove', e => {
+        if (!drag) return;
+        S.view.az = drag.az - (e.clientX - drag.x) * 0.4;
+        S.view.el = clamp(drag.el + (e.clientY - drag.y) * 0.3, 2, 80);
+        draw3D();
+    });
+    const end = () => { drag = null; };
+    view3d.addEventListener('pointerup', end); view3d.addEventListener('pointercancel', end);
+    view3d.addEventListener('wheel', e => { if (S.view.mode !== 'behind') return; e.preventDefault(); S.view.dist = clamp(S.view.dist * (e.deltaY > 0 ? 1.08 : 0.92), 6, 40); draw3D(); }, { passive: false });
+})();
+function selectSet(id, play) {
+    S.selId = id;
+    const d = derived().find(x => x.set.id === id);
+    if (d) {
+        const k = S.project.video.realPerVideo || 1;
+        const t0 = d.fit ? d.fit.tStart / k : d.tVideo, t1 = d.fit ? d.fit.tEnd / k : d.tVideo;
+        if (play) { seek(Math.max(0, t0 - 0.6)); S.playUntil = t1 + 0.6; video.play(); }
+        else { video.pause(); seek(t0); }
+    }
+    render(); drawAll();
+}
+function renderViewTab() {
+    const ds = visibleDerived(), all = derived();
+    const v = S.view;
+    let h = `<div class="row"><span>顯示</span>${['all', 'us', 'them'].map(t => `<button class="small ${v.team === t ? 'on' : ''}" data-team="${t}">${t === 'all' ? '全部' : TEAM_LABEL[t]}</button>`).join('')}
+        <label class="row" style="margin-left:auto"><input type="checkbox" id="chkOnVideo" ${v.onVideo ? 'checked' : ''}> 在影片上畫</label></div>`;
+    if (!S.project.calib.cam) h += '<div class="warn">先完成「① 場地校正」才看得到 3D 軌跡。</div>';
+    const selIdx = ds.findIndex(d => d.set.id === S.selId);
+    h += `<div class="row"><button class="small" data-act="prev" ${ds.length ? '' : 'disabled'}>‹ 上一顆</button><button class="small" data-act="next" ${ds.length ? '' : 'disabled'}>下一顆 ›</button>
+        ${selIdx >= 0 ? '<button class="small" data-act="playSel">▶ 播這顆</button>' : ''}<span class="muted">${ds.length} 顆</span></div>`;
+    const sel = ds[selIdx];
+    if (sel) {
+        const m = sel.metrics;
+        h += `<div class="card"><div class="head row"><b>#${setNumber(sel.set.id)}</b><span class="num">${fmtTime(sel.tVideo)}</span><span class="tag ${m.team}">${TEAM_LABEL[m.team]}</span><b>${esc(m.target)}</b><span class="muted">${DIR_LABEL[m.dir]}</span></div>
+            <dl class="kv">
+                <dt>最高點</dt><dd>${m.apexZ.toFixed(2)} m（高出網子 ${m.aboveNet >= 0 ? '+' : ''}${m.aboveNet.toFixed(2)}）</dd>
+                <dt>飛行時間</dt><dd>${m.flight.toFixed(2)} 秒</dd>
+                <dt>起點</dt><dd>離網 ${m.startDistNet.toFixed(2)} m、高 ${m.startA[2].toFixed(2)} m</dd>
+                <dt>終點</dt><dd>離網 ${m.distNet.toFixed(2)} m、離邊線 ${(CONFIG.HALF_W - Math.abs(m.endA[0])).toFixed(2)} m、高 ${m.endA[2].toFixed(2)} m</dd>
+                <dt>離手速度</dt><dd>${m.speed.toFixed(1)} m/s</dd>
+                <dt>擬合誤差</dt><dd>${sel.fit.rms.toFixed(1)} px</dd>
+            </dl>
+            <div class="row grade">${Object.entries(CONFIG.GRADES).map(([k, g]) => `<button class="g-${k} ${sel.set.grade === k ? 'on' : ''}" data-grade="${k}">${g.label}</button>`).join('')}</div>
+            <textarea id="noteBox" placeholder="註解（例如：太貼網、攻擊手沒準備好）">${esc(sel.set.note)}</textarea></div>`;
+    }
+    if (ds.length) {
+        h += '<div class="list">';
+        for (const d of ds) {
+            const m = d.metrics;
+            h += `<div class="item ${d.set.id === S.selId ? 'sel' : ''}" data-pick="${d.set.id}"><div class="head">
+                <span class="dot" style="background:${gradeColor(d.set.grade)}"></span><span class="no">#${setNumber(d.set.id)}</span><span class="num">${fmtTime(d.tVideo)}</span>
+                <span class="tag ${m.team}">${TEAM_LABEL[m.team]}</span><span>${esc(m.target)}</span>
+                <span class="muted num">${m.apexZ.toFixed(1)} m・${m.flight.toFixed(2)} s</span>${d.set.note ? '<span class="muted">📝</span>' : ''}</div></div>`;
+        }
+        h += '</div>';
+    }
+    const missing = all.length - all.filter(d => d.metrics).length;
+    if (missing) h += `<p class="hint">另有 ${missing} 顆還算不出軌跡（點數不夠或還沒校正）。</p>`;
+    const sm = summarize(all);
+    for (const team of ['us', 'them']) {
+        const rows = CONFIG.TARGETS.filter(tg => sm[team][tg].n);
+        if (!rows.length) continue;
+        h += `<div><h3>${TEAM_LABEL[team]}統計</h3><table class="stats"><tr><th>目標區</th><th>次數</th><th>平均最高</th><th>平均飛行</th><th>好／普通／待改進</th></tr>
+            ${rows.map(tg => { const g = sm[team][tg]; return `<tr><td>${esc(tg)}</td><td class="num">${g.n}</td><td class="num">${g.apex.toFixed(2)} m</td><td class="num">${g.flight.toFixed(2)} s</td><td class="num">${g.grades.good}／${g.grades.ok}／${g.grades.bad}</td></tr>`; }).join('')}</table></div>`;
+    }
+    return h;
+}
+function bindViewTab(root) {
+    root.querySelectorAll('[data-team]').forEach(b => b.onclick = () => { S.view.team = b.dataset.team; render(); drawAll(); });
+    const ov = root.querySelector('#chkOnVideo');
+    if (ov) ov.onchange = () => { S.view.onVideo = ov.checked; drawAll(); };
+    root.querySelectorAll('[data-pick]').forEach(el => el.onclick = () => selectSet(el.dataset.pick));
+    const ds = visibleDerived();
+    const idx = ds.findIndex(d => d.set.id === S.selId);
+    const on = (sel, fn) => { const el = root.querySelector(sel); if (el) el.onclick = fn; };
+    on('[data-act=prev]', () => { if (ds.length) selectSet(ds[idx <= 0 ? ds.length - 1 : idx - 1].set.id); });
+    on('[data-act=next]', () => { if (ds.length) selectSet(ds[idx < 0 || idx >= ds.length - 1 ? 0 : idx + 1].set.id); });
+    on('[data-act=playSel]', () => selectSet(S.selId, true));
+    root.querySelectorAll('[data-grade]').forEach(b => b.onclick = () => {
+        const s = S.project.sets.find(x => x.id === S.selId);
+        if (!s) return;
+        s.grade = s.grade === b.dataset.grade ? null : b.dataset.grade;
+        commit();
+    });
+    const note = root.querySelector('#noteBox');
+    if (note) note.onchange = () => { const s = S.project.sets.find(x => x.id === S.selId); if (s) { s.note = note.value; commit(); } };
+}
+
+// ------------------------------------------------------------
+// 設定、專案選單
+// ------------------------------------------------------------
+function openSettings() {
+    const p = S.project;
+    openSheet(`<h2>設定</h2>
+        <div class="field"><label for="setFps">影片 fps</label><input type="number" id="setFps" min="1" max="1000" step="1" value="${p.video.fps}">
+            <span class="hint">只影響「1 格」按鈕跳多少；軌跡計算用的是影片時間，設錯不會算錯。</span></div>
+        <div class="field"><label for="setRpv">影片 1 秒 = 實際幾秒</label><input type="number" id="setRpv" min="0.001" max="10" step="any" value="${p.video.realPerVideo}">
+            <span class="hint">一般影片是 1。慢動作才要改，例如 240fps 慢動作用 30fps 播放：0.125。</span></div>
+        <div class="field"><label for="setNet">網高</label><select id="setNet">
+            <option value="2.43" ${p.settings.netHeight === 2.43 ? 'selected' : ''}>男網 2.43 m</option>
+            <option value="2.24" ${p.settings.netHeight === 2.24 ? 'selected' : ''}>女網 2.24 m</option></select></div>
+        <div class="field"><label for="setSide">我方在</label><select id="setSide">
+            <option value="near" ${p.settings.ourSide === 'near' ? 'selected' : ''}>近端（靠攝影機那一半）</option>
+            <option value="far" ${p.settings.ourSide === 'far' ? 'selected' : ''}>遠端</option></select></div>
+        <div class="row" style="justify-content:flex-end"><button data-x="no">取消</button><button class="primary" data-x="yes">儲存</button></div>`, box => {
+        box.querySelector('[data-x=no]').onclick = closeSheet;
+        box.querySelector('[data-x=yes]').onclick = () => {
+            const fps = +box.querySelector('#setFps').value, rpv = +box.querySelector('#setRpv').value;
+            if (fps > 0) p.video.fps = fps;
+            if (rpv > 0) p.video.realPerVideo = rpv;
+            const nh = +box.querySelector('#setNet').value;
+            const netChanged = nh !== p.settings.netHeight;
+            p.settings.netHeight = nh;
+            p.settings.ourSide = box.querySelector('#setSide').value === 'far' ? 'far' : 'near';
+            closeSheet();
+            if (netChanged) recalibrate();
+            commit();
+        };
+    });
+}
+let jsonMode = null;
+function pickJson(mode) { jsonMode = mode; $('#fileJson').value = ''; $('#fileJson').click(); }
+$('#fileJson').addEventListener('change', async e => {
+    const f = e.target.files[0];
+    if (!f) return;
+    let obj;
+    try { obj = JSON.parse(await f.text()); } catch (err) { toast('這個檔案不是 JSON'); return; }
+    if (jsonMode === 'project') {
+        const r = migrate(obj);
+        if (!r.ok) { toast(r.msg); return; }
+        const apply = () => {
+            if (S.ready) {
+                const meta = S.project.video;
+                if (r.project.video.name && r.project.video.name !== meta.name) toast(`注意：這個專案是給「${r.project.video.name}」的`);
+                r.project.video = Object.assign(r.project.video, { name: meta.name, size: meta.size, duration: meta.duration, w: meta.w, h: meta.h });
+                S.project = r.project; S.draftId = null; S.selId = null; S.calibResult = null;
+                if (!S.project.calib.cam) recalibrate();
+                commit(); toast(`已開啟專案（${r.project.sets.length} 顆舉球）`);
+            } else {
+                S.pendingProject = r.project;
+                toast(`請開啟影片「${r.project.video.name || '（未記錄檔名）'}」`);
+            }
+        };
+        if (S.project.sets.length || Object.keys(S.project.calib.points).length) askConfirm('開啟專案檔', '目前這支影片的校正與標記會被取代（可以先下載專案檔備份）。', '開啟', apply);
+        else apply();
+    } else if (jsonMode === 'det') {
+        const r = parseDetections(obj);
+        if (!r.ok) { toast(r.msg); return; }
+        if (r.video.name && r.video.name !== S.project.video.name) toast(`注意：偵測結果是「${r.video.name}」的`);
+        S.project.candidates = r.tracks;
+        S.tab = 'mark'; S.preview = null;
+        commit();
+        layoutStage();
+        toast(`匯入 ${r.tracks.length} 條自動偵測的軌跡`);
+    }
+});
+$('#btnOpenVideo').onclick = () => { $('#fileVideo').value = ''; $('#fileVideo').click(); };
+document.querySelector('[data-act=openVideo]').onclick = () => $('#btnOpenVideo').click();
+$('#fileVideo').addEventListener('change', e => openVideoFile(e.target.files[0]));
+$('#btnSettings').onclick = openSettings;
+$('#btnProject').onclick = e => { e.stopPropagation(); $('#menuProject').hidden = !$('#menuProject').hidden; };
+document.addEventListener('click', () => { $('#menuProject').hidden = true; });
+$('#menuProject').addEventListener('click', e => {
+    const b = e.target.closest('[data-act]');
+    if (!b) return;
+    $('#menuProject').hidden = true;
+    const act = b.dataset.act;
+    if (act === 'openProject') pickJson('project');
+    if (act === 'importDet') { if (!S.ready) { toast('先開啟影片'); return; } pickJson('det'); }
+    if (act === 'saveProject') download(`${baseName()}-setter-track.json`, S.project);
+    if (act === 'exportLabels') {
+        const L = buildLabels(S.project);
+        if (!L.labels.length) { toast('還沒有可以匯出的標註（要先校正並標記舉球）'); return; }
+        download(`${baseName()}-labels.json`, L);
+        toast(`匯出 ${L.labels.length} 個球的位置`);
+    }
+    if (act === 'clearProject') askConfirm('清空資料', '這支影片的校正、標記、候選都會刪掉，不能復原。', '清空', () => {
+        const meta = S.project.video;
+        S.project = newProject(meta); S.draftId = null; S.selId = null; S.calibResult = null;
+        commit();
+    });
+});
+
+// ------------------------------------------------------------
+// 分頁、快捷鍵
+// ------------------------------------------------------------
+document.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => {
+    S.tab = b.dataset.tab; S.confirmDel = null;
+    if (S.tab !== 'mark') S.preview = null;
+    render(); layoutStage();
+});
+function render() {
+    document.querySelectorAll('[data-tab]').forEach(b => b.classList.toggle('on', b.dataset.tab === S.tab));
+    const body = $('#tabBody');
+    if (S.tab === 'calib') { body.innerHTML = renderCalib(); bindCalib(body); }
+    if (S.tab === 'mark') { body.innerHTML = renderMark(); bindMark(body); }
+    if (S.tab === 'view') { body.innerHTML = renderViewTab(); bindViewTab(body); renderView3dTools(); }
+}
+document.addEventListener('keydown', e => {
+    const tag = (e.target.tagName || '').toLowerCase();
+    if (tag === 'input' || tag === 'textarea' || tag === 'select' || !$('#sheet').hidden) return;
+    if (e.key === ' ') { e.preventDefault(); togglePlay(); }
+    else if (e.key === 'ArrowLeft') { e.preventDefault(); if (e.shiftKey) { video.pause(); seek(video.currentTime - 1); } else stepFrames(-1); }
+    else if (e.key === 'ArrowRight') { e.preventDefault(); if (e.shiftKey) { video.pause(); seek(video.currentTime + 1); } else stepFrames(1); }
+    else if (S.tab === 'mark' && S.draftId) {
+        if (e.key === 'Enter') { e.preventDefault(); finishDraft(); }
+        else if (e.key === 'Backspace') { e.preventDefault(); undoMark(); }
+        else if (e.key === 'Escape') { e.preventDefault(); const s = draftSet(); if (s && (s.marks.length <= 1 || s._editing)) cancelDraft(); else toast('要放棄這顆，請按「取消」'); }
+    }
+});
+
+window.runSelfTests = runSelfTests;
+window.__setterTrack = { S, derived, seek }; // 給 tests/ui-check.mjs 用
+render();
+layoutStage();
+</script>
+</body>
+</html>
