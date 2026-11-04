@@ -1,0 +1,13 @@
+# 影片與測試輸出不進 repo
+*.mp4
+*.mov
+*.m4v
+*.webm
+*.avi
+out/
+runs/
+datasets/
+*.pt
+__pycache__/
+*.pyc
+.DS_Store
