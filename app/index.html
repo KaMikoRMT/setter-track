@@ -943,10 +943,28 @@ function deriveCandidates(p) {
     if (!cam) return { ready: false, list: [] };
     const tol = Math.max(2.5, 0.0025 * (p.video.w || cam.w || 1280));
     const taken = deriveAll(p).filter(d => d.fit).map(d => [d.fit.tStart / k, d.fit.tEnd / k]);
-    const list = [];
+    const segs = [];
     for (const c of p.candidates) {
         const pts = c.points.map(m => ({ t: m.t * k, u: m.u, v: m.v, tv: m.t }));
-        for (const seg of splitBallistic(cam, pts, { tol })) {
+        for (const seg of splitBallistic(cam, pts, { tol })) segs.push({ cand: c, pts: seg });
+    }
+    // 偵測漏了幾格、軌跡斷成兩條時，後半截會從半空中開始，很像一顆舉球。
+    // 前一段結束後 0.3 秒內開始、兩段合起來還是同一條拋物線 → 接回去（真的被碰到的話接不起來）。
+    segs.sort((a, b) => a.pts[0].t - b.pts[0].t);
+    const merged = [];
+    for (const sg of segs) {
+        let joined = false;
+        for (let i = merged.length - 1; i >= 0 && i >= merged.length - 8 && !joined; i--) {
+            const r = merged[i], gap = sg.pts[0].t - r.pts[r.pts.length - 1].t;
+            if (gap <= 0 || gap > 0.3) continue;
+            const all = r.pts.concat(sg.pts), f = fitBallistic(cam, all);
+            if (f && f.rms <= tol && f.inliers.filter(x => !x).length <= Math.max(1, all.length * 0.1)) { merged[i] = { cand: r.cand, pts: all }; joined = true; }
+        }
+        if (!joined) merged.push(sg);
+    }
+    const list = [];
+    for (const { cand: c, pts: seg } of merged) {
+        {
             const tv0 = seg[0].tv, tv1 = seg[seg.length - 1].tv, mid = 0.5 * (tv0 + tv1);
             if ((c.dismissed || []).some(r => mid >= r[0] && mid <= r[1])) continue;
             if (taken.some(r => mid >= r[0] && mid <= r[1])) continue;
@@ -1228,6 +1246,25 @@ function runSelfTests() {
         ok(Math.abs(setSeg[0].t - 1.0) <= 2 / 60 + 1e-9 && Math.abs(setSeg[setSeg.length - 1].t - 2.15) <= 2 / 60 + 1e-9, `舉球段 ${setSeg[0].t.toFixed(3)}–${setSeg[setSeg.length - 1].t.toFixed(3)}`);
         ok(segs.length <= 4, `段數 ${segs.length}`);
         ok(!setSeg.some(m => m === pts[70] || m === pts[100]), '雜點要被跳過');
+    });
+
+    T('候選：軌跡斷成兩條時，半截的接球不會被當成舉球', () => {
+        // 實際遇到的情況（tests/make-synthetic.mjs 的相機）：遠端的接球漏了幾格、軌跡斷開，
+        // 後半截從網前半空中開始、飛 0.3 秒到舉球員，看起來像一顆快攻
+        const cam = lookAtCamera([-6.5, -12.5, 2.2], [0.5, -1, 1.6], 0.55 * 1280, 1280, 720);
+        cam.k1 = -0.12; cam.k2 = 0.02;
+        const pass = trueFit([0.5, 7.0, 0.9], [-0.7, 0.6, 2.4], 1.0);
+        const pts = [];
+        for (let f = 0; f < 60; f++) {
+            const q = projectPoint(cam, ballAt(pass, f / 60));
+            pts.push({ t: f / 60 + 0.5 / 60, u: q[0] + 0.4 * gauss(), v: q[1] + 0.4 * gauss() });
+        }
+        const p = newProject({ w: 1280, h: 720 });
+        p.calib.cam = cam;
+        p.candidates = parseDetections({ app: 'setter-track-detector', tracks: [{ id: 'a', points: pts.slice(0, 36) }, { id: 'b', points: pts.slice(41) }] }).tracks;
+        const list = deriveCandidates(p).list;
+        ok(!list.some(c => c.like.ok), `不應該有像舉球的段：${list.map(c => c.tVideo.toFixed(2) + (c.like.ok ? ' 像 ' + c.metrics.target : ' 不像')).join('、')}`);
+        ok(list.length === 1, `兩截應該接成一段（${list.length} 段）`);
     });
 
     T('候選：只有舉球那段像舉球；加入後不再列出', () => {

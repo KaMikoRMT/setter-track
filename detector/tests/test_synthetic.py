@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """用合成影片（已知每一格球的位置）檢查 detect.py。
 
-用法：python3 detector/tests/test_synthetic.py [合成影片資料夾]
+用法：python3 detector/tests/test_synthetic.py [合成影片資料夾] [--model best.pt]
 沒給資料夾就先用 node tests/make-synthetic.mjs 產生一份到暫存資料夾。
 結果的 detections.json 會寫在同一個資料夾，tests/ui-check.mjs 會拿去測匯入。
+--model：改測訓練好的 YOLO 模型（結果寫到 detections-yolo.json，不影響 ui-check）。
 """
+import argparse
 import json
 import math
 import os
@@ -19,12 +21,17 @@ import detect  # noqa: E402
 
 
 def main():
-    syn = sys.argv[1] if len(sys.argv) > 1 else tempfile.mkdtemp(prefix="setter-syn-")
+    ap = argparse.ArgumentParser()
+    ap.add_argument("syn", nargs="?", default=None)
+    ap.add_argument("--model", default=None)
+    a = ap.parse_args()
+    syn = a.syn or tempfile.mkdtemp(prefix="setter-syn-")
     if not os.path.exists(os.path.join(syn, "truth.json")):
         subprocess.run(["node", os.path.join(ROOT, "tests", "make-synthetic.mjs"), syn], check=True)
     truth = json.load(open(os.path.join(syn, "truth.json"), encoding="utf-8"))
-    out = detect.run(os.path.join(syn, "synthetic.mp4"), progress=False)
-    with open(os.path.join(syn, "detections.json"), "w", encoding="utf-8") as fh:
+    out = detect.run(os.path.join(syn, "synthetic.mp4"), progress=False, model_path=a.model)
+    out_name = "detections-yolo.json" if a.model else "detections.json"
+    with open(os.path.join(syn, out_name), "w", encoding="utf-8") as fh:
         json.dump(out, fh, ensure_ascii=False)
 
     fps = truth["video"]["fps"]
@@ -47,13 +54,29 @@ def main():
         if not cond:
             failed += 1
 
-    check(recall >= 0.9, f"找回球的格數比例 {recall:.1%}（{len(hit)}/{len(visible)}）")
+    # 依每段飛行分開看（舉球最重要）
+    hit_ok = {p[0] for p in good}
+    per = []
+    for fl in truth["flights"]:
+        fr = [b for b in visible if fl["t0"] <= b["t"] < fl["t1"]]
+        if fr:
+            per.append((fl["kind"], fl["team"], fl["t0"], sum(1 for b in fr if b["frame"] in hit_ok), len(fr)))
+    for kind, team, t0, h, n in per:
+        print(f"     {kind:6s} {team:4s} {t0:5.2f}s  {h}/{n}")
+    sets = [x for x in per if x[0] == "set"]
+    set_recall = sum(x[3] for x in sets) / max(1, sum(x[4] for x in sets))
+    if a.model:
+        # 訓練標註只來自標記過的舉球，所以模型專門找「舉球時的球」；接球、扣球只報告不檢查
+        check(set_recall >= 0.95, f"舉球的格數找回比例 {set_recall:.1%}（全部 {recall:.1%}）")
+    else:
+        check(recall >= 0.9, f"找回球的格數比例 {recall:.1%}（{len(hit)}/{len(visible)}）")
+        check(set_recall >= 0.9, f"舉球的格數找回比例 {set_recall:.1%}")
     # 剩下的雜訊（人身上的）交給網頁工具用物理條件過濾；最後找不找得到舉球由 tests/ui-check.mjs 檢查
     check(precision >= 0.6, f"輸出的點是球的比例 {precision:.1%}（{len(good)}/{len(pts)}）")
     check(med <= 1.5, f"位置誤差中位數 {med:.2f} px")
     check(out["stats"]["tracks"] <= 30, f"軌跡數 {out['stats']['tracks']}")
     print(f"\n{'全部通過' if not failed else f'{failed} 項失敗'}（{out['stats']['frames']} 格，平均每格 {out['stats']['candidates_per_frame']} 個候選）")
-    print(f"偵測結果：{os.path.join(syn, 'detections.json')}")
+    print(f"偵測結果：{os.path.join(syn, out_name)}")
     sys.exit(1 if failed else 0)
 
 
